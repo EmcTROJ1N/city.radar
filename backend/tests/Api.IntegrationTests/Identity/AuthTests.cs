@@ -228,6 +228,34 @@ public sealed class AuthTests(PostgresFixture fixture) : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Refresh_with_same_host_origin_after_proxy_dropped_port_succeeds()
+    {
+        var ct = CancellationToken.None;
+        var (rawToken, _) = await IssueRefreshAsync(ModeratorId, ct);
+
+        // `proxy_set_header Host $host` отбрасывает порт: Origin приходит с портом, Host — без.
+        using var response = await SendRefreshAsync(rawToken, origin: "https://localhost:4201", ct: ct);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task Refresh_with_origin_on_another_port_returns_403()
+    {
+        var ct = CancellationToken.None;
+        var (rawToken, _) = await IssueRefreshAsync(ModeratorId, ct);
+
+        // Порт в Host передан явно и не совпадает с портом Origin — это чужой источник.
+        using var response = await SendRefreshAsync(
+            rawToken,
+            origin: "https://localhost:4201",
+            ct: ct,
+            host: "localhost:8443");
+
+        response.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+    }
+
+    [Fact]
     public async Task Logout_revokes_refresh()
     {
         var ct = CancellationToken.None;
@@ -298,9 +326,15 @@ public sealed class AuthTests(PostgresFixture fixture) : IAsyncLifetime
         string? rawToken,
         bool withCsrf = true,
         string? origin = null,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        string? host = null)
     {
         using var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/auth/refresh");
+
+        if (host is not null)
+        {
+            request.Headers.Host = host;
+        }
 
         if (withCsrf)
         {

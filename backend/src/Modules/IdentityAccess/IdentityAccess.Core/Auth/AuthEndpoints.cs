@@ -166,7 +166,7 @@ public static class AuthEndpoints
             return false;
         }
 
-        if (string.Equals(originUri.Authority, request.Host.Value, StringComparison.OrdinalIgnoreCase))
+        if (IsSameHost(originUri, request))
         {
             return true;
         }
@@ -190,6 +190,20 @@ public static class AuthEndpoints
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// Совпадает ли Origin с хостом запроса. Порт сверяется только если прокси его передал:
+    /// типовой <c>proxy_set_header Host $host</c> порт отбрасывает, и тогда остаётся имя хоста.
+    /// </summary>
+    private static bool IsSameHost(Uri originUri, HttpRequest request)
+    {
+        if (!string.Equals(originUri.Host, request.Host.Host, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        return request.Host.Port is not { } requestPort || requestPort == originUri.Port;
     }
 
     internal static void SetRefreshCookie(HttpContext context, string rawToken, DateTimeOffset expiresAt)
