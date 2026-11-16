@@ -10,7 +10,8 @@ import type { Feature, FeatureCollection, LineString, Point, Polygon } from 'geo
 import { Tone } from '../../lib/tone';
 import { IconName, iconPaths } from '../../ui/icon';
 import { DrawMode, BBox, LngLat, MapAdapter, MapGeometry, MapItem, MapStyleUrls, MapView } from '../map-adapter';
-import { bboxOf, centroid, closeRing, isValidGeometry, isValidPolygon } from '../geometry';
+import { bboxOf, bboxOfMany, centroid, closeRing, isValidGeometry, isValidPolygon } from '../geometry';
+import { geolocationErrorMessage, userLocationFrom } from '../geolocation';
 
 const SOURCE_ID = 'zones';
 const FILL_LAYER = 'zones-fill';
@@ -98,6 +99,26 @@ export function applyMarkerClasses(element: HTMLElement, classes: string[]): voi
   element.classList.add(...classes);
 }
 
+/**
+ * id слоя подложки, перед которым вставляем свои слои: первая подпись, идущая
+ * после последнего «земляного» слоя (заливки, линии, фон).
+ *
+ * Искать просто первую подпись нельзя: в наших стилях OpenFreeMap первой идёт
+ * `water_name` — она стоит ПЕРЕД зданиями и дорогами. Вставка перед ней кладёт
+ * очертания геозон под здания, и они перечёркиваются. Нужен слой выше всей
+ * подложки, но ниже её подписей.
+ */
+export function overlayBeforeLayerId(
+  layers: readonly { id: string; type: string }[],
+): string | undefined {
+  let lastGround = -1;
+  layers.forEach((layer, index) => {
+    if (layer.type !== 'symbol') lastGround = index;
+  });
+  const label = layers[lastGround + 1];
+  return label?.type === 'symbol' ? label.id : undefined;
+}
+
 /** Реализация карты на MapLibre GL JS. Подложка — только свои файлы стиля из `public/map-style`. */
 export class MapLibreAdapter implements MapAdapter {
   private map: MapLibreMap | null = null;
@@ -121,6 +142,11 @@ export class MapLibreAdapter implements MapAdapter {
   private readonly pins = new Map<string, { marker: Marker; element: HTMLButtonElement }>();
   private readonly labels = new Map<string, { marker: Marker; element: HTMLDivElement }>();
   private readonly warnedInvalid = new Set<string>();
+  private locationErrorCb: ((message: string) => void) | null = null;
+  private userMarker: Marker | null = null;
+  private userPosition: LngLat | null = null;
+  private geolocationWatch: number | null = null;
+  private recenterOnFix = false;
 
   private drawMode: DrawMode = 'none';
   private drawPoint: LngLat | null = null;
@@ -190,6 +216,7 @@ export class MapLibreAdapter implements MapAdapter {
   destroy(): void {
     if (this.viewTimer) clearTimeout(this.viewTimer);
     this.viewTimer = null;
+    this.stopGeolocation();
     this.themeObserver?.disconnect();
     this.themeObserver = null;
     this.appliedStyleUrl = null;
@@ -245,6 +272,116 @@ export class MapLibreAdapter implements MapAdapter {
       return;
     }
     map.fitBounds(boundsOf(geometry), { padding: 64, duration: 600, maxZoom: 15 });
+  }
+
+  /** Стартовый вид по всем геозонам: пользователь сразу видит свою рабочую область. */
+  fitGeometries(geometries: readonly MapGeometry[]): void {
+    const map = this.map;
+    if (!map) return;
+    const box = bboxOfMany(geometries);
+    if (!box) return;
+    map.fitBounds(
+      [
+        [box.minLon, box.minLat],
+        [box.maxLon, box.maxLat],
+      ],
+      { padding: 64, duration: 0, maxZoom: 15 },
+    );
+  }
+
+  startGeolocation(): void {
+    if (this.geolocationWatch !== null) return;
+    if (typeof navigator === 'undefined' || !navigator.geolocation) {
+      this.reportLocationError('Браузер не поддерживает геолокацию.');
+      return;
+    }
+    if (typeof window !== 'undefined' && window.isSecureContext === false) {
+      this.reportLocationError('Геолокация доступна только по защищённому соединению (HTTPS).');
+      return;
+    }
+
+    this.geolocationWatch = navigator.geolocation.watchPosition(
+      (position) => this.applyUserPosition(position),
+      (error) => {
+        this.reportLocationError(geolocationErrorMessage(error));
+        if (error.code === 1) this.stopGeolocation();
+      },
+      { enableHighAccuracy: true, maximumAge: 10_000, timeout: 20_000 },
+    );
+  }
+
+  flyToUser(): void {
+    if (this.userPosition) {
+      this.centerOnUser();
+      return;
+    }
+    this.recenterOnFix = true;
+    this.startGeolocation();
+  }
+
+  stopGeolocation(): void {
+    if (this.geolocationWatch !== null) {
+      if (typeof navigator !== 'undefined' && navigator.geolocation) {
+        navigator.geolocation.clearWatch(this.geolocationWatch);
+      }
+      this.geolocationWatch = null;
+    }
+    this.recenterOnFix = false;
+    this.userMarker?.remove();
+    this.userMarker = null;
+    this.userPosition = null;
+  }
+
+  onLocationError(cb: (message: string) => void): void {
+    this.locationErrorCb = cb;
+  }
+
+  private applyUserPosition(position: GeolocationPosition): void {
+    const location = userLocationFrom(position);
+    if (!location) return;
+    this.userPosition = location.coordinates;
+    this.syncUserMarker(location.accuracy);
+    if (this.recenterOnFix) {
+      this.recenterOnFix = false;
+      this.centerOnUser();
+    }
+  }
+
+  private reportLocationError(message: string): void {
+    this.recenterOnFix = false;
+    this.locationErrorCb?.(message);
+  }
+
+  private centerOnUser(): void {
+    const map = this.map;
+    if (!map || !this.userPosition) return;
+    map.flyTo({ center: this.userPosition, zoom: Math.max(map.getZoom(), 16), duration: 600 });
+  }
+
+  private syncUserMarker(accuracy: number): void {
+    const map = this.map;
+    if (!map || !this.userPosition) return;
+
+    if (!this.userMarker) {
+      const element = document.createElement('div');
+      element.className = 'map-user-location';
+      element.innerHTML =
+        '<span class="map-user-location__pulse"></span><span class="map-user-location__dot"></span>';
+      this.userMarker = new Marker({ element, anchor: 'center' })
+        .setLngLat(this.userPosition)
+        .addTo(map);
+    } else {
+      this.userMarker.setLngLat(this.userPosition);
+    }
+
+    const element = this.userMarker.getElement();
+    const label =
+      accuracy > 0
+        ? `Ваше местоположение, точность ±${Math.round(accuracy)} м`
+        : 'Ваше местоположение';
+    element.setAttribute('role', 'img');
+    element.setAttribute('aria-label', label);
+    element.title = label;
   }
 
   onSelect(cb: (id: string) => void): void {
@@ -347,10 +484,9 @@ export class MapLibreAdapter implements MapAdapter {
     }
   }
 
-  /** Свои слои вставляем перед подписями подложки, чтобы они оставались видимыми. */
-  private firstSymbolLayer(): string | undefined {
-    const layers = this.map?.getStyle()?.layers ?? [];
-    return layers.find((layer) => layer.type === 'symbol')?.id;
+  /** Точка вставки своих слоёв: над подложкой, под её подписями. */
+  private overlayBeforeLayer(): string | undefined {
+    return overlayBeforeLayerId(this.map?.getStyle()?.layers ?? []);
   }
 
   private bindZoneEvents(map: MapLibreMap): void {
@@ -399,7 +535,7 @@ export class MapLibreAdapter implements MapAdapter {
 
     map.addSource(SOURCE_ID, { type: 'geojson', data: this.zoneData(), promoteId: 'id' });
 
-    const before = this.firstSymbolLayer();
+    const before = this.overlayBeforeLayer();
     const width: ExpressionSpecification = [
       'case',
       ['boolean', ['feature-state', 'selected'], false],
@@ -511,7 +647,13 @@ export class MapLibreAdapter implements MapAdapter {
     applyMarkerClasses(element, classes);
     element.setAttribute('aria-label', `${item.name}: ${item.label}`);
     element.setAttribute('aria-current', item.id === this.selectedId ? 'true' : 'false');
-    element.innerHTML = `<span class="map-pin__icon">${iconSvg(item.icon)}</span><span class="map-pin__label">${escapeHtml(item.label)}</span>`;
+    // Название — в приоритете, статус — подпись под ним (как у подписи геозоны).
+    element.innerHTML =
+      `<span class="map-pin__icon">${iconSvg(item.icon)}</span>` +
+      `<span class="map-pin__text">` +
+      `<span class="map-pin__name">${escapeHtml(item.name)}</span>` +
+      `<span class="map-pin__state">${escapeHtml(item.label)}</span>` +
+      `</span>`;
   }
 
   private syncLabels(): void {

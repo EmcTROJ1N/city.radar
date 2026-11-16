@@ -52,6 +52,15 @@ export interface MapAdapter {
   setItems(items: MapItem[]): void;
   setSelected(id: string | null): void;
   flyTo(geometry: MapGeometry): void;
+  /** Подгоняет вид под все геометрии сразу: старт карты рядом с геозонами. */
+  fitGeometries(geometries: readonly MapGeometry[]): void;
+  /** Запрашивает доступ к геолокации и показывает позицию пользователя на карте. */
+  startGeolocation(): void;
+  /** Центрирует карту на позиции пользователя; без неё — сначала запрашивает позицию. */
+  flyToUser(): void;
+  stopGeolocation(): void;
+  /** Ошибка геолокации текстом — для тоста или подписи на странице. */
+  onLocationError(cb: (message: string) => void): void;
   onSelect(cb: (id: string) => void): void;
   /** После moveend с задержкой 300 мс и один раз после загрузки. */
   onViewChange(cb: (view: MapView) => void): void;

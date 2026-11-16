@@ -129,7 +129,9 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     ports:
-      - "${FRONTEND_PORT:-4200}:80"
+      # 4201, а не 4200: на 4200 часто висит локальный `ng serve` другого Angular-проекта
+      # на [::1], и браузер по `localhost` попадает в него, а не в этот nginx.
+      - "${FRONTEND_PORT:-4201}:80"
     depends_on:
       api:
         condition: service_healthy

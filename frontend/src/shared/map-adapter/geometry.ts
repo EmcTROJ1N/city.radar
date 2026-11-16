@@ -92,3 +92,20 @@ export function bboxOf(geometry: MapGeometry): BBox {
   }
   return { minLon, minLat, maxLon, maxLat };
 }
+
+/** Общая рамка набора геометрий; null для пустого списка. */
+export function bboxOfMany(geometries: readonly MapGeometry[]): BBox | null {
+  let box: BBox | null = null;
+  for (const geometry of geometries) {
+    const current = bboxOf(geometry);
+    if (!box) {
+      box = { ...current };
+      continue;
+    }
+    box.minLon = Math.min(box.minLon, current.minLon);
+    box.minLat = Math.min(box.minLat, current.minLat);
+    box.maxLon = Math.max(box.maxLon, current.maxLon);
+    box.maxLat = Math.max(box.maxLat, current.maxLat);
+  }
+  return box;
+}

@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { bboxOf, centroid, closeRing, isValidGeometry, isValidPolygon, uniqueVertices } from './geometry';
+import {
+  bboxOf,
+  bboxOfMany,
+  centroid,
+  closeRing,
+  isValidGeometry,
+  isValidPolygon,
+  uniqueVertices,
+} from './geometry';
 
 describe('closeRing', () => {
   it('добавляет первую позицию в конец', () => {
@@ -224,5 +232,37 @@ describe('bboxOf', () => {
         ],
       }),
     ).toEqual({ minLon: 37.6, minLat: 47.99, maxLon: 37.7, maxLat: 48.03 });
+  });
+});
+
+describe('bboxOfMany', () => {
+  it('объединяет точки и полигоны в общую рамку', () => {
+    expect(
+      bboxOfMany([
+        { type: 'Point', coordinates: [37.55, 48.01] },
+        {
+          type: 'Polygon',
+          coordinates: [
+            [
+              [37.6, 47.98],
+              [37.75, 47.98],
+              [37.75, 48.05],
+              [37.6, 48.05],
+              [37.6, 47.98],
+            ],
+          ],
+        },
+      ]),
+    ).toEqual({ minLon: 37.55, minLat: 47.98, maxLon: 37.75, maxLat: 48.05 });
+  });
+
+  it('для пустого списка возвращает null', () => {
+    expect(bboxOfMany([])).toBeNull();
+  });
+
+  it('не меняет исходные рамки', () => {
+    const first = bboxOf({ type: 'Point', coordinates: [1, 2] });
+    bboxOfMany([{ type: 'Point', coordinates: [1, 2] }, { type: 'Point', coordinates: [3, 4] }]);
+    expect(first).toEqual({ minLon: 1, minLat: 2, maxLon: 1, maxLat: 2 });
   });
 });

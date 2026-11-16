@@ -50,7 +50,7 @@ docker compose up -d --build
 ```
 
 Поднимаются PostGIS, Redis, Api, собранный фронтенд на nginx и одноразовый шаг генерации
-dev-секретов. Портал — **http://localhost:4200** (nginx раздаёт Angular и проксирует `/api/` в Api),
+dev-секретов. Портал — **http://localhost:4201** (nginx раздаёт Angular и проксирует `/api/` в Api),
 Api напрямую — http://localhost:5178 (`/health`).
 
 Контейнеры работают в `ASPNETCORE_ENVIRONMENT=Development`: Api сам применяет миграции при старте,

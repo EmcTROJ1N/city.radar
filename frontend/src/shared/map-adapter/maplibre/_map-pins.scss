@@ -1,17 +1,19 @@
 // Маркеры и подписи карты: глобальные, потому что MapLibre создаёт их вне шаблонов Angular.
 // Цвет статуса приходит классом tone-* (см. _tokens.scss).
 
+// Точечная фиксация: без наведения — только точка (иконка статуса), имя и
+// статус раскрываются при наведении/фокусе/выборе, чтобы не закрывать карту.
 .map-pin {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  max-width: 220px;
-  padding: 3px 10px 3px 3px;
-  border: 2px solid var(--tone, var(--st-stale));
-  border-radius: 999px;
-  background: var(--surface);
+  max-width: 240px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-md);
+  background: transparent;
   color: var(--ink);
-  box-shadow: var(--shadow-float);
+  box-shadow: none;
   font: 600 12px/1.1 var(--font-ui);
   cursor: pointer;
   white-space: nowrap;
@@ -25,6 +27,7 @@
     border-radius: 50%;
     background: var(--tone, var(--st-stale));
     color: #fff;
+    box-shadow: 0 0 0 2px var(--surface), var(--shadow-float);
 
     svg {
       width: 17px;
@@ -32,17 +35,51 @@
     }
   }
 
-  &__label {
+  &__text {
+    display: grid;
+    gap: 1px;
+    min-width: 0;
+    max-width: 0;
     overflow: hidden;
-    text-overflow: ellipsis;
+    opacity: 0;
   }
 
-  &:focus-visible {
-    box-shadow: var(--focus-ring);
+  // Название — в приоритете над статусом: крупнее, основным цветом и первым.
+  &__name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--ink);
+    font: 600 12px/1.2 var(--font-ui);
+  }
+
+  &__state {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--tone, var(--ink-3));
+    font: 600 11px/1.2 var(--font-ui);
+  }
+
+  &:hover,
+  &:focus-visible,
+  &.is-selected {
+    padding: 3px 10px 3px 3px;
+    border: 2px solid var(--tone, var(--st-stale));
+    background: var(--surface);
+    box-shadow: var(--shadow-float);
+
+    .map-pin__text {
+      max-width: none;
+      opacity: 1;
+    }
   }
 
   &.is-stale {
     opacity: 0.55;
+  }
+
+  &:hover.is-stale,
+  &:focus-visible.is-stale,
+  &.is-selected.is-stale {
     border-style: dashed;
   }
 
@@ -57,6 +94,52 @@
   }
 }
 
+// Своя позиция: синяя точка с пульсацией. Маркер создаётся MapLibre, поэтому стили
+// глобальные; клики по нему не должны перехватывать карту.
+.map-user-location {
+  width: 24px;
+  height: 24px;
+  pointer-events: none;
+
+  &__dot {
+    position: absolute;
+    inset: 5px;
+    border: 3px solid #fff;
+    border-radius: 50%;
+    background: var(--st-ok);
+    box-shadow: 0 0 0 1px rgb(15 42 51 / 0.28), var(--shadow-float);
+  }
+
+  &__pulse {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: var(--st-ok);
+    opacity: 0.28;
+    animation: map-user-pulse 2s ease-out infinite;
+  }
+}
+
+@keyframes map-user-pulse {
+  0% {
+    transform: scale(0.6);
+    opacity: 0.35;
+  }
+
+  100% {
+    transform: scale(1.8);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .map-user-location__pulse {
+    animation: none;
+    opacity: 0.2;
+  }
+}
+
+// Геозона — всегда видимая подпись по центру: имя (приоритетно) и статус.
 .map-zone-label {
   display: grid;
   gap: 2px;

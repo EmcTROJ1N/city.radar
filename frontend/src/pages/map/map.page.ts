@@ -1,6 +1,7 @@
 import { Component, DestroyRef, computed, effect, inject, signal, untracked } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
-import { MapFeaturesStore } from '@entities/map-object';
+import { MapApi, MapFeaturesStore } from '@entities/map-object';
+import { environment } from '@env/environment';
 import type {
   CreateObservationResponse,
   Geometry,
@@ -10,12 +11,16 @@ import type {
 } from '@shared/api/types';
 import { dateTime } from '@shared/lib/format';
 import { onlineSignal } from '@shared/lib/online';
-import { LngLat, MapGeometry, MapItem, MapView } from '@shared/map-adapter/map-adapter';
+import { bboxParam, LngLat, MapGeometry, MapItem, MapView } from '@shared/map-adapter/map-adapter';
 import { MapViewComponent } from '@shared/map-adapter/map-view';
 import { Icon, normalizeIcon } from '@shared/ui/icon';
+import { ToastService } from '@shared/ui/toast';
 import { Disclaimer } from '@widgets/disclaimer/disclaimer';
 import { MapFilters } from '@widgets/map-filters/map-filters';
 import { ObjectCard } from '@widgets/object-card/object-card';
+
+/** Масштаб запроса геозон для стартового вида: полигоны без лишней детализации. */
+const COVERAGE_ZOOM = 10;
 
 function toGeometry(geometry: Geometry): MapGeometry {
   if (geometry.type === 'Point') {
@@ -41,7 +46,9 @@ export function initialFocus(items: MapItem[], id: string | null): MapGeometry |
   template: `
     <div class="mapview">
       <app-map-view class="canvas" [items]="items()" [selectedId]="selectedId()" [focus]="focus()"
-        (selectItem)="select($event)" (viewChange)="onView($event)" />
+        [fitGeometries]="coverage()" [userLocation]="true"
+        (selectItem)="select($event)" (viewChange)="onView($event)"
+        (locationError)="onLocationError($event)" />
 
       <button class="btn btn--primary btn--sm filters-toggle" type="button" (click)="panelOpen.set(!panelOpen())">
         <app-icon name="filter" />{{ panelOpen() ? 'Скрыть фильтры' : 'Фильтры' }}
@@ -125,6 +132,8 @@ export function initialFocus(items: MapItem[], id: string | null): MapGeometry |
 export class MapPage {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
+  private readonly api = inject(MapApi);
+  private readonly toasts = inject(ToastService);
   protected readonly store = inject(MapFeaturesStore);
   protected readonly online = onlineSignal();
   protected readonly dateTime = dateTime;
@@ -132,6 +141,8 @@ export class MapPage {
   protected readonly selectedId = signal<string | null>(this.route.snapshot.queryParamMap.get('object'));
   protected readonly query = signal('');
   protected readonly focus = signal<MapGeometry | null>(null);
+  /** Геозоны региона: карта стартует на них, а не в центре города по умолчанию. */
+  protected readonly coverage = signal<readonly MapGeometry[] | null>(null);
   protected readonly panelOpen = signal(false);
   protected readonly disclaimerOpen = signal(false);
   protected readonly refreshKey = signal(0);
@@ -180,6 +191,9 @@ export class MapPage {
         replaceUrl: true,
       });
     });
+
+    // Прямая ссылка на фиксацию важнее стартового вида: не перебиваем её обзором геозон.
+    if (!this.initialObjectId) void this.loadCoverage();
   }
 
   protected onView(view: MapView): void {
@@ -197,6 +211,10 @@ export class MapPage {
   protected pick(item: MapItem): void {
     this.select(item.id, true);
     this.query.set('');
+  }
+
+  protected onLocationError(message: string): void {
+    this.toasts.error(message);
   }
 
   protected onReported(response: CreateObservationResponse): void {
@@ -223,6 +241,31 @@ export class MapPage {
       this.cardTimer = null;
       this.refreshKey.update((value) => value + 1);
     }, 1500);
+  }
+
+  /**
+   * Один лёгкий запрос по региону: только полигоны. По ним карта подбирает стартовый
+   * вид, чтобы работа начиналась возле геозон. Ошибку не показываем — остаётся
+   * вид по умолчанию из environment, а данные загрузятся обычным bbox-опросом.
+   */
+  private async loadCoverage(): Promise<void> {
+    const [minLon, minLat, maxLon, maxLat] = environment.mapCoverageBbox;
+    try {
+      const response = await this.api.listFeatures({
+        bbox: bboxParam({ minLon, minLat, maxLon, maxLat }),
+        zoom: COVERAGE_ZOOM,
+        kinds: ['polygon'],
+      });
+      if (response.notModified) return;
+      // Пока ждали ответ, пользователь мог выбрать фиксацию — его вид не перебиваем.
+      if (this.selectedId() || this.focus()) return;
+      const geometries = response.body.items
+        .filter((feature) => feature.geometry.type === 'Polygon')
+        .map((feature) => toGeometry(feature.geometry));
+      if (geometries.length) this.coverage.set(geometries);
+    } catch {
+      // Стартовый вид по умолчанию — рабочая альтернатива, отдельного сообщения не нужно.
+    }
   }
 
   private toItem(feature: MapFeature): MapItem {

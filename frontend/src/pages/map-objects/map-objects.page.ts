@@ -78,8 +78,10 @@ const PAGE_SIZE = 30;
             [focus]="focus()"
             [drawMode]="drawMode()"
             [drawInitial]="drawInitial()"
+            [userLocation]="true"
             (selectItem)="select($event)"
             (drawChange)="onDrawn($event)"
+            (locationError)="onLocationError($event)"
           />
         </div>
 
@@ -168,10 +170,10 @@ const PAGE_SIZE = 30;
     .filters { display: grid; gap: 8px; }
     .filters select {
       height: var(--control-h);
-      padding: 0 10px;
+      padding: 0 34px 0 10px;
       border: 1px solid var(--line);
       border-radius: var(--r-md);
-      background: var(--surface);
+      background-color: var(--surface);
     }
     .mapbox { height: 520px; border-radius: var(--r-lg); overflow: hidden; }
     .is-muted { opacity: 0.55; }
@@ -241,11 +243,14 @@ export class MapObjectsPage {
       limit: 20,
     });
     return {
-      items: page.items.map((source) => ({
-        value: source.id,
-        label: source.name,
-        hint: `${SOURCE_TYPE_LABEL[source.sourceType]} · ${source.chatId}`,
-      })),
+      items: page.items
+        // «Сайт» доступен фиксациям неявно: привязывать его нельзя.
+        .filter((source) => source.sourceType !== 'site')
+        .map((source) => ({
+          value: source.id,
+          label: source.name,
+          hint: `${SOURCE_TYPE_LABEL[source.sourceType]} · ${source.chatId}`,
+        })),
       nextCursor: page.nextCursor,
     };
   };
@@ -308,6 +313,10 @@ export class MapObjectsPage {
 
   protected onDrawn(geometry: MapGeometry | null): void {
     this.editor()?.onDrawn(geometry);
+  }
+
+  protected onLocationError(message: string): void {
+    this.toasts.error(message);
   }
 
   protected onSaved(object: MapObject): void {

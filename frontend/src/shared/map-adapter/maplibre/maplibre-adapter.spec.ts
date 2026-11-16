@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { MapItem } from '../map-adapter';
-import { applyMarkerClasses, zoneFeatureCollection } from './maplibre-adapter';
+import { applyMarkerClasses, overlayBeforeLayerId, zoneFeatureCollection } from './maplibre-adapter';
 
 const ZONE: MapItem = {
   id: '1d9f4c6e-4f3a-4c1e-9a0e-77b2c5a1e001',
@@ -68,6 +68,37 @@ describe('zoneFeatureCollection', () => {
   it('возвращает пустую коллекцию без полигонов', () => {
     expect(zoneFeatureCollection([POINT]).features).toHaveLength(0);
     expect(zoneFeatureCollection([]).features).toHaveLength(0);
+  });
+});
+
+describe('overlayBeforeLayerId', () => {
+  it('ставит свои слои над зданиями и дорогами, но под подписями', () => {
+    // Порядок как в public/map-style/dark.json: вода, здания, дороги, затем подписи.
+    const layers = [
+      { id: 'background', type: 'background' },
+      { id: 'water_name', type: 'symbol' },
+      { id: 'building', type: 'fill' },
+      { id: 'highway_minor', type: 'line' },
+      { id: 'highway_name_other', type: 'symbol' },
+      { id: 'place_city', type: 'symbol' },
+    ];
+
+    expect(overlayBeforeLayerId(layers)).toBe('highway_name_other');
+  });
+
+  it('без подписей возвращает undefined — слои встают поверх подложки', () => {
+    const layers = [
+      { id: 'background', type: 'background' },
+      { id: 'building', type: 'fill' },
+    ];
+
+    expect(overlayBeforeLayerId(layers)).toBeUndefined();
+  });
+
+  it('подложка только из подписей: вставляем перед первой', () => {
+    const layers = [{ id: 'place_city', type: 'symbol' }];
+
+    expect(overlayBeforeLayerId(layers)).toBe('place_city');
   });
 });
 

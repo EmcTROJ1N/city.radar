@@ -33,6 +33,7 @@ const ICONS = {
   chevron: ['M6 9l6 6 6-6'],
   search: ['M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14z', 'M16.5 16.5 21 21'],
   info: ['M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z', 'M12 11v5', 'M12 8h.01'],
+  locate: ['M12 19a7 7 0 1 0 0-14 7 7 0 0 0 0 14z', 'M12 2v3', 'M12 19v3', 'M2 12h3', 'M19 12h3', 'M12 14a2 2 0 1 0 0-4 2 2 0 0 0 0 4z'],
 } as const;
 
 export type IconName = keyof typeof ICONS;
@@ -52,7 +53,9 @@ export function normalizeIcon(raw: string | null | undefined, fallback: IconName
 @Component({
   selector: 'app-icon',
   template: `<svg class="i" viewBox="0 0 24 24" aria-hidden="true">@for (d of paths(); track $index) {<path [attr.d]="d" />}</svg>`,
-  styles: `:host { display: inline-flex; }`,
+  // flex: none — иконка (например, шеврон в селекте) не должна сжиматься,
+  // когда рядом длинная подпись в flex-контейнере.
+  styles: `:host { display: inline-flex; flex: none; }`,
 })
 export class Icon {
   readonly name = input.required<IconName>();
