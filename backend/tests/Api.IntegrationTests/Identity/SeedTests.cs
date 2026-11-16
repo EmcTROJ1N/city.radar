@@ -30,6 +30,9 @@ public sealed class SeedTests(PostgresFixture fixture)
 
     private const int ExpectedDevUserCount = 5;
 
+    /// <summary>Dev-пользователь с ролью <c>user</c> (из <c>db/seed_dev.sql</c>).</summary>
+    private static readonly Guid DevUserId = Guid.Parse("00000000-0000-0000-0000-0000000000a1");
+
     [Fact]
     public async Task Moderator_role_has_no_secret_or_user_admin_permissions()
     {
@@ -174,6 +177,47 @@ public sealed class SeedTests(PostgresFixture fixture)
     }
 
     [Fact]
+    public async Task Dev_seeder_does_not_restore_role_removed_through_admin_panel()
+    {
+        var cancellationToken = CancellationToken.None;
+        await ResetIdentityAsync(cancellationToken);
+
+        await using var provider = BuildProvider();
+        await using (var scope = provider.CreateAsyncScope())
+        {
+            await scope.ServiceProvider.GetRequiredService<RoleSeeder>().SeedAsync(cancellationToken);
+            await scope.ServiceProvider.GetRequiredService<DevSeeder>().SeedAsync(cancellationToken);
+        }
+
+        try
+        {
+            // Админ снял роль через интерфейс: привязки нет, в журнале — итоговый набор.
+            await ExecuteAsync(
+                $"""
+                 delete from user_roles where user_id = '{DevUserId}';
+                 insert into audit_entries (action, entity_type, entity_id, after)
+                 values ('user.roles.assign', 'user', '{DevUserId}', jsonb_build_object('roles', '[]'::jsonb));
+                 """,
+                cancellationToken);
+
+            await using (var scope = provider.CreateAsyncScope())
+            {
+                await scope.ServiceProvider.GetRequiredService<DevSeeder>().SeedAsync(cancellationToken);
+            }
+
+            (await CountUserRolesAsync(DevUserId, cancellationToken)).ShouldBe(0L);
+        }
+        finally
+        {
+            // Общая БД коллекции: убираем журнал и возвращаем dev-роли, как до теста.
+            await ExecuteAsync("truncate table audit_entries;", cancellationToken);
+
+            await using var scope = provider.CreateAsyncScope();
+            await scope.ServiceProvider.GetRequiredService<DevSeeder>().SeedAsync(cancellationToken);
+        }
+    }
+
+    [Fact]
     public async Task Testing_environment_seeds_dev_users()
     {
         var cancellationToken = CancellationToken.None;
@@ -252,6 +296,19 @@ public sealed class SeedTests(PostgresFixture fixture)
         var result = await command.ExecuteScalarAsync(cancellationToken);
 
         return Convert.ToInt64(result, CultureInfo.InvariantCulture);
+    }
+
+    private async Task<long> CountUserRolesAsync(Guid userId, CancellationToken cancellationToken)
+    {
+        await using var connection = new NpgsqlConnection(fixture.ConnectionString);
+        await connection.OpenAsync(cancellationToken);
+
+        await using var command = new NpgsqlCommand(
+            "select count(*) from user_roles where user_id = @user_id",
+            connection);
+        command.Parameters.AddWithValue("user_id", userId);
+
+        return Convert.ToInt64(await command.ExecuteScalarAsync(cancellationToken), CultureInfo.InvariantCulture);
     }
 
     private async Task<List<string>> QueryRolePermissionsAsync(

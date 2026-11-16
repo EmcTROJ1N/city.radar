@@ -1,3 +1,5 @@
+using System.Text.Json;
+
 using BuildingBlocks.Persistence;
 
 using IdentityAccess.Contracts;
@@ -35,7 +37,8 @@ public sealed class DevSeeder(MayakDbContext db)
 
     /// <summary>
     /// Создаёт недостающих dev-пользователей и их привязки к ролям. Повторный вызов ничего
-    /// не дублирует; существующих пользователей не изменяет.
+    /// не дублирует; существующих пользователей не изменяет. Если роли пользователя
+    /// меняли через админку (есть запись <c>user.roles.assign</c>), сид их не возвращает.
     /// </summary>
     /// <exception cref="InvalidOperationException">Роли ещё не созданы — сначала нужен <see cref="RoleSeeder"/>.</exception>
     public async Task SeedAsync(CancellationToken ct = default)
@@ -52,6 +55,7 @@ public sealed class DevSeeder(MayakDbContext db)
         var existingLinks = await db.Set<UserRole>()
             .Where(link => userIds.Contains(link.UserId))
             .ToListAsync(ct);
+        var manualRoles = await LatestManualRolesAsync(userIds, ct);
 
         foreach (var seed in DevUsers)
         {
@@ -76,7 +80,11 @@ public sealed class DevSeeder(MayakDbContext db)
                 existingUsers.Add(user);
             }
 
-            if (existingLinks.TrueForAll(link => link.UserId != seed.Id || link.RoleId != roleId))
+            // Роль, снятую через админку, dev-сид не возвращает.
+            var keptByAdmin = !manualRoles.TryGetValue(seed.Id, out var assigned)
+                || assigned.Contains(seed.RoleName);
+            if (keptByAdmin
+                && existingLinks.TrueForAll(link => link.UserId != seed.Id || link.RoleId != roleId))
             {
                 var link = new UserRole { UserId = seed.Id, RoleId = roleId };
                 db.Add(link);
@@ -89,6 +97,67 @@ public sealed class DevSeeder(MayakDbContext db)
         // Остаток db/seed_dev.sql (каталог, источник со статусами и фиксация) сидируется в
         // composition root — Api.Host/Seeding/DevCatalogSeeder.cs: IdentityAccess не должен
         // писать в таблицы чужих модулей.
+    }
+
+    /// <summary>
+    /// Последний ручной набор ролей каждого dev-пользователя из журнала аудита.
+    /// Отсутствие записи означает «роли не трогали» — действует обычный dev-сид.
+    /// </summary>
+    private async Task<Dictionary<Guid, HashSet<string>>> LatestManualRolesAsync(
+        Guid[] userIds,
+        CancellationToken ct)
+    {
+        var ids = userIds.Select(id => id.ToString()).ToArray();
+        var entries = await db.Set<AuditEntry>()
+            .AsNoTracking()
+            .Where(entry => entry.Action == "user.roles.assign"
+                && entry.EntityType == "user"
+                && entry.EntityId != null
+                && ids.Contains(entry.EntityId))
+            .OrderByDescending(entry => entry.Id)
+            .Select(entry => new { entry.EntityId, entry.After })
+            .ToListAsync(ct);
+
+        var result = new Dictionary<Guid, HashSet<string>>();
+        foreach (var entry in entries)
+        {
+            // Записи идут от новых к старым: первая на пользователя — актуальная.
+            if (!Guid.TryParse(entry.EntityId, out var userId) || result.ContainsKey(userId)) continue;
+            result[userId] = ParseRoles(entry.After);
+        }
+
+        return result;
+    }
+
+    /// <summary>Поле <c>roles</c> из jsonb-снимка аудита; некорректный JSON — пустой набор.</summary>
+    private static HashSet<string> ParseRoles(string? json)
+    {
+        var roles = new HashSet<string>(StringComparer.Ordinal);
+        if (string.IsNullOrWhiteSpace(json)) return roles;
+
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            if (!document.RootElement.TryGetProperty("roles", out var array)
+                || array.ValueKind != JsonValueKind.Array)
+            {
+                return roles;
+            }
+
+            foreach (var item in array.EnumerateArray())
+            {
+                if (item.ValueKind == JsonValueKind.String && item.GetString() is { } role)
+                {
+                    roles.Add(role);
+                }
+            }
+        }
+        catch (JsonException)
+        {
+            // Битый снимок не должен ломать старт dev-стенда.
+        }
+
+        return roles;
     }
 
     private sealed record DevUser(Guid Id, long MaxUserId, string DisplayName, string RoleName);
