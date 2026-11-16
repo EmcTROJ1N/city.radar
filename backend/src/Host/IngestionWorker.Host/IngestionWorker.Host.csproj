@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk.Worker">
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Ingestion\Ingestion.Abstractions\Ingestion.Abstractions.csproj" />
+    <ProjectReference Include="..\..\Ingestion\Ingestion.Pipeline\Ingestion.Pipeline.csproj" />
+    <ProjectReference Include="..\..\Ingestion\Ingestion.Adapters.TelegramBotApi\Ingestion.Adapters.TelegramBotApi.csproj" />
+    <ProjectReference Include="..\..\Ingestion\Ingestion.Adapters.TelegramMtProto\Ingestion.Adapters.TelegramMtProto.csproj" />
+    <ProjectReference Include="..\..\Ingestion\Ingestion.Llm.OpenAi\Ingestion.Llm.OpenAi.csproj" />
+    <ProjectReference Include="..\..\Modules\IdentityAccess\IdentityAccess.Core\IdentityAccess.Core.csproj" />
+    <ProjectReference Include="..\..\Modules\Catalog\Catalog.Core\Catalog.Core.csproj" />
+    <ProjectReference Include="..\..\Modules\Sources\Sources.Core\Sources.Core.csproj" />
+    <ProjectReference Include="..\..\BuildingBlocks\BuildingBlocks.Persistence\BuildingBlocks.Persistence.csproj" />
+    <ProjectReference Include="..\..\BuildingBlocks\BuildingBlocks.Messaging\BuildingBlocks.Messaging.csproj" />
+    <ProjectReference Include="..\..\BuildingBlocks\BuildingBlocks.Security\BuildingBlocks.Security.csproj" />
+    <ProjectReference Include="..\..\BuildingBlocks\BuildingBlocks.Web\BuildingBlocks.Web.csproj" />
+  </ItemGroup>
+
+</Project>

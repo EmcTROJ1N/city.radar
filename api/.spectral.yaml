@@ -1,0 +1,39 @@
+extends: spectral:oas
+rules:
+  # Каждый метод объявляет право: `none` — без права, `auth` — любой вошедший
+  operation-has-permission:
+    description: Метод обязан указывать право в x-permission.
+    message: "Нет x-permission у {{path}}"
+    severity: error
+    given: $.paths[*][get,post,put,patch,delete]
+    then:
+      field: x-permission
+      function: truthy
+  # Метод с пользовательской аутентификацией должен описывать 401
+  secured-operation-has-401:
+    description: Защищённый метод описывает ответ 401.
+    severity: error
+    given: $.paths[*][get,post,put,patch,delete]
+    then:
+      function: schema
+      functionOptions:
+        schema:
+          if:
+            required: [security]
+            properties:
+              security:
+                type: array
+                maxItems: 0
+          then: {}
+          else:
+            properties:
+              responses:
+                required: ['401']
+  info-contact: off
+  operation-description: off
+  oas3-unused-component: warn
+overrides:
+  # Заглушка входа через MAX всегда отвечает 501
+  - files: ["openapi.yaml#/paths/~1auth~1max/post"]
+    rules:
+      operation-success-response: off

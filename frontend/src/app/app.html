@@ -1,0 +1,40 @@
+<div class="shell" [attr.data-nav-open]="navOpen()" [attr.data-has-nav]="nav().length > 1">
+  <header class="topbar">
+    <button class="btn btn--ghost btn--icon menu-btn" type="button" aria-label="Меню" (click)="navOpen.set(!navOpen())"><app-icon name="menu" /></button>
+    <a class="brand" routerLink="/"><span class="logo"><app-icon name="drop" /></span><span class="brand__name">Городские ресурсы <small>ДНР</small></span></a>
+
+    <nav class="nav nav--top" aria-label="Разделы">
+      @for (n of nav(); track n.path) {
+        <a [routerLink]="n.path" routerLinkActive="is-active" [routerLinkActiveOptions]="{ exact: n.path === '/' }"><app-icon [name]="n.icon" />{{ n.label }}</a>
+      }
+    </nav>
+
+    <div class="topbar__tools">
+      <app-offline-indicator />
+      @if (session.me(); as u) {
+        <a class="btn" routerLink="/login"><app-icon name="user" /><span class="hide-sm user">{{ u.displayName }} <small>{{ session.roleLabel() }}</small></span></a>
+      } @else {
+        <a class="btn btn--primary" routerLink="/login"><app-icon name="message" /><span class="hide-sm">Войти</span></a>
+      }
+    </div>
+  </header>
+
+  <nav class="nav nav--side" aria-label="Разделы">
+    @for (n of nav(); track n.path) {
+      <a [routerLink]="n.path" routerLinkActive="is-active" [routerLinkActiveOptions]="{ exact: n.path === '/' }" (click)="navOpen.set(false)"><app-icon [name]="n.icon" />{{ n.label }}</a>
+    }
+  </nav>
+
+  <main class="content"><router-outlet /></main>
+
+</div>
+
+@if (updateReady()) {
+  <div class="update" role="status">
+    <span class="grow">Доступна новая версия</span>
+    <button class="btn btn--primary btn--sm" type="button" (click)="reload()">Обновить</button>
+  </div>
+}
+
+<app-toasts />
+<app-confirm-host />

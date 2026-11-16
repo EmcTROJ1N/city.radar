@@ -1,0 +1,90 @@
+// Маркеры и подписи карты: глобальные, потому что MapLibre создаёт их вне шаблонов Angular.
+// Цвет статуса приходит классом tone-* (см. _tokens.scss).
+
+.map-pin {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 220px;
+  padding: 3px 10px 3px 3px;
+  border: 2px solid var(--tone, var(--st-stale));
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow-float);
+  font: 600 12px/1.1 var(--font-ui);
+  cursor: pointer;
+  white-space: nowrap;
+
+  &__icon {
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    flex: none;
+    border-radius: 50%;
+    background: var(--tone, var(--st-stale));
+    color: #fff;
+
+    svg {
+      width: 17px;
+      height: 17px;
+    }
+  }
+
+  &__label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  &:focus-visible {
+    box-shadow: var(--focus-ring);
+  }
+
+  &.is-stale {
+    opacity: 0.55;
+    border-style: dashed;
+  }
+
+  &.is-selected {
+    border-width: 3px;
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--tone, var(--st-stale)) 30%, transparent), var(--shadow-float);
+
+    .map-pin__icon {
+      width: 34px;
+      height: 34px;
+    }
+  }
+}
+
+.map-zone-label {
+  display: grid;
+  gap: 2px;
+  padding: 4px 9px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-md);
+  background: var(--glass);
+  box-shadow: var(--shadow-float);
+  pointer-events: none;
+  white-space: nowrap;
+  text-align: center;
+
+  &__name {
+    color: var(--ink);
+    font: 600 13px/1.2 var(--font-ui);
+  }
+
+  &__state {
+    color: var(--tone, var(--ink-3));
+    font: 600 11px/1.2 var(--font-ui);
+  }
+
+  &.is-hidden {
+    display: none;
+  }
+
+  &.is-selected {
+    border-color: var(--tone, var(--brand));
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--tone, var(--brand)) 35%, transparent), var(--shadow-float);
+  }
+}

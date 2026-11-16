@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>Contract.TokenTool</AssemblyName>
+    <RootNamespace>Contract.TokenTool</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\src\BuildingBlocks\BuildingBlocks.Persistence\BuildingBlocks.Persistence.csproj" />
+    <ProjectReference Include="..\..\..\src\Modules\IdentityAccess\IdentityAccess.Core\IdentityAccess.Core.csproj" />
+  </ItemGroup>
+
+</Project>

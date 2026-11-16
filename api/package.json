@@ -1,0 +1,18 @@
+{
+  "name": "mayak-api-contract",
+  "private": true,
+  "description": "Контракт API (OpenAPI): линтер, mock-сервер, генерация типов",
+  "scripts": {
+    "lint": "spectral lint openapi.yaml --fail-severity=warn",
+    "mock": "prism mock openapi.yaml --port 4010 --dynamic",
+    "types": "openapi-typescript openapi.yaml -o ../frontend/src/shared/api/schema.d.ts",
+    "docs": "redocly build-docs openapi.yaml -o dist/index.html",
+    "check": "npm run lint && npm run types"
+  },
+  "devDependencies": {
+    "@redocly/cli": "^1.25.0",
+    "@stoplight/prism-cli": "^5.5.0",
+    "@stoplight/spectral-cli": "^6.11.0",
+    "openapi-typescript": "^7.13.0"
+  }
+}

@@ -1,0 +1,13 @@
+# Общие правила для образов Api и IngestionWorker.
+# Контекст сборки — каталог backend/ (см. deploy/docker-compose.prod.yml).
+**/bin/
+**/obj/
+**/TestResults/
+**/node_modules/
+**/.vs/
+**/.idea/
+**/*.user
+**/*.md
+tests/
+.git/
+.gitignore

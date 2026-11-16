@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Modules\Catalog\Catalog.Contracts\Catalog.Contracts.csproj" />
+    <ProjectReference Include="..\..\Modules\Sources\Sources.Contracts\Sources.Contracts.csproj" />
+    <ProjectReference Include="..\Ingestion.Abstractions\Ingestion.Abstractions.csproj" />
+  </ItemGroup>
+
+</Project>

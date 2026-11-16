@@ -1,0 +1,2522 @@
+openapi: 3.1.0
+info:
+  title: API портала «Городские ресурсы ДНР»
+  version: 0.1.0
+  description: |
+    Контракт API (contract-first): источник правды для бэкенда, фронтенда и тестов.
+    Охват версии 0.1.0 — вертикальный срез: карта, отметки, источники данных.
+
+    Правила:
+    - ошибки — RFC 7807 (`application/problem+json`);
+    - у каждого метода указано требуемое право в `x-permission`;
+    - секреты (сессии Telegram, прокси, ключ LLM) через этот API не читаются и не передаются.
+servers:
+  - url: http://127.0.0.1:4010
+    description: Mock-сервер (npm run mock); Prism отдаёт пути от корня, без префикса /api/v1
+  - url: /api/v1
+    description: Бэкенд (тот же хост, что и фронтенд)
+tags:
+  - name: Auth
+    description: Идентификация (вход через MAX — заглушка)
+  - name: Map
+    description: Чтение карты (публичное)
+  - name: Observations
+    description: Отметки и наблюдения
+  - name: Sources
+    description: Источники данных и их статусы
+  - name: Catalog
+    description: Каталог и фиксации на карте (конструктор)
+  - name: Moderation
+    description: Очередь модерации
+  - name: Admin
+    description: Пользователи, роли, аудит, настройки, секреты
+security:
+  - bearerAuth: []
+
+paths:
+  /auth/max:
+    post:
+      tags: [Auth]
+      operationId: loginByMax
+      summary: Вход через MAX (заглушка)
+      description: Механизм входа не определён. Всегда отвечает 501.
+      security: []
+      x-permission: none
+      responses:
+        '501':
+          description: Авторизация будет доступна позже
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+              example:
+                type: about:blank
+                title: Не реализовано
+                status: 501
+                detail: Авторизация будет доступна позже
+
+  /me:
+    get:
+      tags: [Auth]
+      operationId: getMe
+      summary: Профиль и права текущего пользователя
+      x-permission: auth
+      responses:
+        '200':
+          description: Профиль
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Me' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /map/features:
+    get:
+      tags: [Map]
+      operationId: listMapFeatures
+      summary: Фиксации и их текущий статус в видимой области
+      description: |
+        Читает проекцию текущих статусов. Поддерживает `ETag` / `If-None-Match`:
+        если ничего не изменилось, отвечает 304 без тела. Геометрия полигонов
+        упрощается в зависимости от `zoom`. Клиент опрашивает метод каждые 30–60 с.
+      security: []
+      x-permission: map.read
+      parameters:
+        - name: bbox
+          in: query
+          required: true
+          description: Видимая область `minLon,minLat,maxLon,maxLat` (WGS 84)
+          schema:
+            type: string
+            pattern: '^-?\d+(\.\d+)?(,-?\d+(\.\d+)?){3}$'
+            examples: ['37.60,47.90,38.10,48.20']
+        - name: zoom
+          in: query
+          schema: { type: integer, minimum: 0, maximum: 22 }
+        - name: categories
+          in: query
+          description: Фильтр по категориям
+          style: form
+          explode: false
+          schema:
+            type: array
+            items: { type: string, format: uuid }
+        - name: statuses
+          in: query
+          description: Фильтр по коду статуса (например, `none`)
+          style: form
+          explode: false
+          schema:
+            type: array
+            items: { type: string }
+        - name: kinds
+          in: query
+          description: Фильтр «только зоны / только точки / всё»
+          style: form
+          explode: false
+          schema:
+            type: array
+            items: { $ref: '#/components/schemas/CoverageKind' }
+        - name: groups
+          in: query
+          description: Фильтр по группам; значение `none` — фиксации без группы
+          style: form
+          explode: false
+          schema:
+            type: array
+            items:
+              type: string
+              description: Идентификатор группы либо `none`
+        - name: If-None-Match
+          in: header
+          schema: { type: string }
+      responses:
+        '200':
+          description: Фиксации в области
+          headers:
+            ETag:
+              description: Версия выдачи для условных запросов
+              schema: { type: string }
+            Cache-Control:
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MapFeaturesResponse' }
+        '304':
+          description: Не изменилось
+        '400':
+          description: Некорректные параметры
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+              example:
+                type: about:blank
+                title: Некорректный запрос
+                status: 400
+                detail: Параметр bbox должен содержать четыре числа через запятую
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /map/objects/{id}:
+    get:
+      tags: [Map]
+      operationId: getMapObject
+      summary: Карточка фиксации
+      description: Статус, источники со списками их статусов (нужны для отметки), время и достоверность.
+      security: []
+      x-permission: map.read
+      parameters:
+        - $ref: '#/components/parameters/MapObjectId'
+      responses:
+        '200':
+          description: Карточка
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MapObjectCard' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /objects/{id}/observations:
+    get:
+      tags: [Observations]
+      operationId: listObjectObservations
+      summary: Публичный список отметок фиксации
+      description: |
+        Последние наблюдения: статус, время, тип источника и текст-основание
+        (сообщение чата или комментарий пользователя). Идентификатор автора не
+        раскрывается; отозванные отметки не показываются.
+      security: []
+      x-permission: map.read
+      parameters:
+        - $ref: '#/components/parameters/MapObjectId'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Страница наблюдений (новые сверху)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ObservationPage' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /observations:
+    post:
+      tags: [Observations]
+      operationId: createObservation
+      summary: Ручная отметка статуса
+      description: |
+        Пользователь выбирает один из источников фиксации и статус из списка этого
+        источника. Срок актуальности берётся из таймаута источника. Отметка влияет на
+        текущий статус наравне с остальными: побеждает самое свежее наблюдение.
+        Фиксацию без источников отметить нельзя.
+      x-permission: observation.create
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateObservationRequest' }
+      responses:
+        '201':
+          description: Отметка создана, статус пересчитан
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CreateObservationResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /sources:
+    get:
+      tags: [Sources]
+      operationId: listSources
+      summary: Список источников
+      x-permission: source.manage
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+        - name: q
+          in: query
+          description: Поиск по названию
+          schema: { type: string, maxLength: 200 }
+        - name: sourceType
+          in: query
+          schema: { $ref: '#/components/schemas/SourceType' }
+        - name: isEnabled
+          in: query
+          schema: { type: boolean }
+      responses:
+        '200':
+          description: Страница источников
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SourcePage' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Sources]
+      operationId: createSource
+      summary: Создать источник со статусами
+      description: Источник создаётся вместе со списком статусов (минимум один).
+      x-permission: source.manage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SourceCreate' }
+      responses:
+        '201':
+          description: Источник создан
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Source' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /sources/{id}:
+    parameters:
+      - $ref: '#/components/parameters/SourceId'
+    get:
+      tags: [Sources]
+      operationId: getSource
+      summary: Источник
+      x-permission: source.manage
+      responses:
+        '200':
+          description: Источник со статусами
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Source' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [Sources]
+      operationId: updateSource
+      summary: Изменить настройки источника
+      description: Статусы источника меняются отдельными методами. Изменения применяются без перезапуска Worker.
+      x-permission: source.manage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SourceUpdate' }
+      responses:
+        '200':
+          description: Источник обновлён
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Source' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+    delete:
+      tags: [Sources]
+      operationId: deleteSource
+      summary: Удалить источник
+      description: Удаляется только источник без наблюдений. Иначе 409 — отключите источник (`/sources/{id}/disable`).
+      x-permission: source.manage
+      responses:
+        '204':
+          description: Удалён
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /sources/{id}/enable:
+    post:
+      tags: [Sources]
+      operationId: enableSource
+      summary: Включить источник
+      x-permission: source.manage
+      parameters:
+        - $ref: '#/components/parameters/SourceId'
+      responses:
+        '200':
+          description: Источник включён
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Source' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /sources/{id}/disable:
+    post:
+      tags: [Sources]
+      operationId: disableSource
+      summary: Выключить источник
+      x-permission: source.manage
+      parameters:
+        - $ref: '#/components/parameters/SourceId'
+      responses:
+        '200':
+          description: Источник выключен
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Source' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /sources/{id}/health:
+    get:
+      tags: [Sources]
+      operationId: getSourceHealth
+      summary: Состояние источника
+      x-permission: source.manage
+      parameters:
+        - $ref: '#/components/parameters/SourceId'
+      responses:
+        '200':
+          description: Состояние
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SourceHealth' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /sources/{id}/statuses:
+    parameters:
+      - $ref: '#/components/parameters/SourceId'
+    get:
+      tags: [Sources]
+      operationId: listSourceStatuses
+      summary: Статусы источника
+      x-permission: source.manage
+      responses:
+        '200':
+          description: Список статусов
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/SourceStatus' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [Sources]
+      operationId: createSourceStatus
+      summary: Добавить статус источнику
+      x-permission: source.manage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SourceStatusInput' }
+      responses:
+        '201':
+          description: Статус создан
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SourceStatus' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /sources/{id}/statuses/{statusId}:
+    parameters:
+      - $ref: '#/components/parameters/SourceId'
+      - $ref: '#/components/parameters/StatusId'
+    put:
+      tags: [Sources]
+      operationId: updateSourceStatus
+      summary: Изменить статус источника
+      x-permission: source.manage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SourceStatusInput' }
+      responses:
+        '200':
+          description: Статус обновлён
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SourceStatus' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+    delete:
+      tags: [Sources]
+      operationId: deleteSourceStatus
+      summary: Удалить статус источника
+      description: Статус, по которому есть наблюдения, удалить нельзя (409).
+      x-permission: source.manage
+      responses:
+        '204':
+          description: Удалён
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      operationId: refreshToken
+      summary: Обновить access-токен
+      description: |
+        Refresh-токен передаётся httpOnly-cookie `refresh_token` (Secure; SameSite=Strict;
+        Path=/api/v1/auth). Защита от CSRF: обязателен заголовок `X-Requested-With: mayak`;
+        если запрос содержит `Origin`, он должен совпадать с хостом запроса или с
+        `Cors:AllowedOrigins`. Нарушение — 403. Нет cookie, токен неизвестен, истёк или уже
+        использован — 401. Повторное использование отозванного токена отзывает все активные
+        refresh-токены пользователя.
+      security: [{ refreshCookie: [] }]
+      x-permission: none
+      responses:
+        '200':
+          description: Новый access-токен
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TokenResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      operationId: logout
+      summary: Выйти (отозвать refresh-токен)
+      x-permission: auth
+      responses:
+        '204':
+          description: Выход выполнен
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /admin/users:
+    get:
+      tags: [Admin]
+      operationId: listUsers
+      summary: Список пользователей
+      x-permission: users.roles.assign
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/UserSearch'
+        - $ref: '#/components/parameters/RoleFilter'
+      responses:
+        '200':
+          description: Страница пользователей
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminUserPage' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/users/{id}/roles:
+    put:
+      tags: [Admin]
+      operationId: setUserRoles
+      summary: Назначить набор ролей пользователю
+      description: Заменяет набор ролей целиком; снять роль модератора — передать набор без неё. Действие пишется в аудит.
+      x-permission: users.roles.assign
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SetRolesRequest' }
+      responses:
+        '200':
+          description: Пользователь обновлён
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminUser' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /admin/audit:
+    get:
+      tags: [Admin]
+      operationId: listAudit
+      summary: Журнал аудита
+      description: Только чтение; записи неизменяемы. Фильтры по пользователю, действию, периоду и объекту.
+      x-permission: audit.read
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/AuditActorId'
+        - $ref: '#/components/parameters/AuditAction'
+        - $ref: '#/components/parameters/AuditEntityType'
+        - $ref: '#/components/parameters/AuditEntityId'
+        - $ref: '#/components/parameters/AuditFrom'
+        - $ref: '#/components/parameters/AuditTo'
+      responses:
+        '200':
+          description: Страница записей (новые сверху)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuditPage' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/settings:
+    get:
+      tags: [Admin]
+      operationId: getSettings
+      summary: Глобальные настройки
+      x-permission: settings.global.manage
+      responses:
+        '200':
+          description: Настройки
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GlobalSettings' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    put:
+      tags: [Admin]
+      operationId: updateSettings
+      summary: Изменить глобальные настройки
+      description: "Частичное обновление: передаются только изменяемые поля."
+      x-permission: settings.global.manage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GlobalSettingsPatch' }
+      responses:
+        '200':
+          description: Настройки после изменения
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GlobalSettings' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /admin/secrets:
+    get:
+      tags: [Admin]
+      operationId: listSecrets
+      summary: Список секретов (без значений)
+      description: "Только метаданные: вид, название, наличие значения. Сами значения не возвращаются никогда."
+      x-permission: source.secrets.manage
+      responses:
+        '200':
+          description: Секреты
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/SecretMeta' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/secrets/telegram-sessions/{id}:
+    put:
+      tags: [Admin]
+      operationId: putTelegramSession
+      summary: Загрузить или заменить токен Telegram-бота
+      description: "Write-only: токен бота сохраняется зашифрованным и наружу не отдаётся. Идентификатор задаёт клиент (создание или замена)."
+      x-permission: source.secrets.manage
+      parameters:
+        - $ref: '#/components/parameters/SecretId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TelegramSessionSecret' }
+      responses:
+        '204':
+          description: Сохранено
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /admin/secrets/proxies/{id}:
+    put:
+      tags: [Admin]
+      operationId: putProxy
+      summary: Задать или заменить прокси
+      description: Write-only. Прокси можно назначить на аккаунт Telegram, источник, LLM или глобально (настройки).
+      x-permission: source.secrets.manage
+      parameters:
+        - $ref: '#/components/parameters/SecretId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProxySecret' }
+      responses:
+        '204':
+          description: Сохранено
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /admin/secrets/llm:
+    put:
+      tags: [Admin]
+      operationId: putLlmSecret
+      summary: Задать ключ, base URL и модель LLM
+      description: Write-only. Worker применяет изменение без перезапуска.
+      x-permission: source.secrets.manage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LlmSecret' }
+      responses:
+        '204':
+          description: Сохранено
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /admin/sources/{id}/connection:
+    get:
+      tags: [Admin]
+      operationId: getSourceConnection
+      summary: Какие сессия и прокси назначены источнику
+      x-permission: source.secrets.manage
+      parameters:
+        - $ref: '#/components/parameters/SourceId'
+      responses:
+        '200':
+          description: Назначения
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SourceConnection' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [Admin]
+      operationId: setSourceConnection
+      summary: Назначить источнику сессию Telegram и прокси
+      x-permission: source.secrets.manage
+      parameters:
+        - $ref: '#/components/parameters/SourceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SourceConnection' }
+      responses:
+        '200':
+          description: Назначения сохранены
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SourceConnection' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /catalog/categories:
+    get:
+      tags: [Catalog]
+      operationId: listCategorys
+      summary: Категории
+      security: []
+      x-permission: map.read
+      responses:
+        '200':
+          description: Категории
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/Category' } }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+    post:
+      tags: [Catalog]
+      operationId: createCategory
+      summary: "Создать: категорию"
+      x-permission: catalog.category.manage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CategoryInput' }
+      responses:
+        '201':
+          description: Создано
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Category' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /catalog/categories/{id}:
+    put:
+      tags: [Catalog]
+      operationId: updateCategory
+      summary: "Изменить: категорию"
+      x-permission: catalog.category.manage
+      parameters:
+        - $ref: '#/components/parameters/CategoryId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CategoryInput' }
+      responses:
+        '200':
+          description: Обновлено
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Category' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+    delete:
+      tags: [Catalog]
+      operationId: deleteCategory
+      summary: "Удалить: категорию"
+      description: Запись, на которую есть ссылки, удалить нельзя (409).
+      x-permission: catalog.category.manage
+      parameters:
+        - $ref: '#/components/parameters/CategoryId'
+      responses:
+        '204':
+          description: Удалено
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /catalog/object-types:
+    get:
+      tags: [Catalog]
+      operationId: listObjectTypes
+      summary: Типы объектов
+      security: []
+      x-permission: map.read
+      parameters:
+        - $ref: '#/components/parameters/FilterCategoryId'
+      responses:
+        '200':
+          description: Типы объектов
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/ObjectType' } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+    post:
+      tags: [Catalog]
+      operationId: createObjectType
+      summary: "Создать: тип объекта"
+      x-permission: catalog.objecttype.manage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ObjectTypeInput' }
+      responses:
+        '201':
+          description: Создано
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ObjectType' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /catalog/object-types/{id}:
+    put:
+      tags: [Catalog]
+      operationId: updateObjectType
+      summary: "Изменить: тип объекта"
+      x-permission: catalog.objecttype.manage
+      parameters:
+        - $ref: '#/components/parameters/ObjectTypeId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ObjectTypeInput' }
+      responses:
+        '200':
+          description: Обновлено
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ObjectType' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+    delete:
+      tags: [Catalog]
+      operationId: deleteObjectType
+      summary: "Удалить: тип объекта"
+      description: Запись, на которую есть ссылки, удалить нельзя (409).
+      x-permission: catalog.objecttype.manage
+      parameters:
+        - $ref: '#/components/parameters/ObjectTypeId'
+      responses:
+        '204':
+          description: Удалено
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /catalog/groups:
+    get:
+      tags: [Catalog]
+      operationId: listObjectGroups
+      summary: Группы объектов
+      security: []
+      x-permission: map.read
+      responses:
+        '200':
+          description: Группы объектов
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/ObjectGroup' } }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+    post:
+      tags: [Catalog]
+      operationId: createObjectGroup
+      summary: "Создать: группу"
+      x-permission: catalog.group.manage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ObjectGroupInput' }
+      responses:
+        '201':
+          description: Создано
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ObjectGroup' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /catalog/groups/{id}:
+    put:
+      tags: [Catalog]
+      operationId: updateObjectGroup
+      summary: "Изменить: группу"
+      x-permission: catalog.group.manage
+      parameters:
+        - $ref: '#/components/parameters/GroupId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ObjectGroupInput' }
+      responses:
+        '200':
+          description: Обновлено
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ObjectGroup' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+    delete:
+      tags: [Catalog]
+      operationId: deleteObjectGroup
+      summary: "Удалить: группу"
+      description: Запись, на которую есть ссылки, удалить нельзя (409).
+      x-permission: catalog.group.manage
+      parameters:
+        - $ref: '#/components/parameters/GroupId'
+      responses:
+        '204':
+          description: Удалено
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /catalog/statuses:
+    get:
+      tags: [Catalog]
+      operationId: listStatusDefinitions
+      summary: Справочник статусов (библиотека)
+      security: []
+      x-permission: map.read
+      responses:
+        '200':
+          description: Справочник статусов (библиотека)
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/StatusDefinition' } }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+    post:
+      tags: [Catalog]
+      operationId: createStatusDefinition
+      summary: "Создать: статус справочника"
+      x-permission: catalog.status.manage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/StatusDefinitionInput' }
+      responses:
+        '201':
+          description: Создано
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StatusDefinition' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /catalog/statuses/{id}:
+    put:
+      tags: [Catalog]
+      operationId: updateStatusDefinition
+      summary: "Изменить: статус справочника"
+      x-permission: catalog.status.manage
+      parameters:
+        - $ref: '#/components/parameters/StatusDefinitionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/StatusDefinitionInput' }
+      responses:
+        '200':
+          description: Обновлено
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StatusDefinition' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+    delete:
+      tags: [Catalog]
+      operationId: deleteStatusDefinition
+      summary: "Удалить: статус справочника"
+      description: Запись, на которую есть ссылки, удалить нельзя (409).
+      x-permission: catalog.status.manage
+      parameters:
+        - $ref: '#/components/parameters/StatusDefinitionId'
+      responses:
+        '204':
+          description: Удалено
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /catalog/objects:
+    get:
+      tags: [Catalog]
+      operationId: listCatalogObjects
+      summary: Список фиксаций для редактирования
+      description: Редакторский вид (включая неактивные). Публичный вид карты — `/map/features`. Фильтр `sourceId` нужен модератору, чтобы выбрать фиксацию из списка источника.
+      x-permission: catalog.object.manage
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/ObjectSearch'
+        - $ref: '#/components/parameters/FilterCategoryId'
+        - $ref: '#/components/parameters/FilterObjectTypeId'
+        - $ref: '#/components/parameters/FilterGroupId'
+        - $ref: '#/components/parameters/FilterSourceId'
+        - $ref: '#/components/parameters/FilterKind'
+        - $ref: '#/components/parameters/FilterIsActive'
+      responses:
+        '200':
+          description: Страница фиксаций
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MapObjectPage' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Catalog]
+      operationId: createCatalogObject
+      summary: Создать фиксацию на карте
+      description: Атрибуты проверяются по JSON Schema типа объекта. Источники можно привязать сразу (`sourceIds`).
+      x-permission: catalog.object.manage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MapObjectInput' }
+      responses:
+        '201':
+          description: Фиксация создана
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MapObject' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /catalog/objects/{id}:
+    get:
+      tags: [Catalog]
+      operationId: getCatalogObject
+      summary: Фиксация (редакторский вид)
+      x-permission: catalog.object.manage
+      parameters:
+        - $ref: '#/components/parameters/MapObjectId'
+      responses:
+        '200':
+          description: Фиксация
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MapObject' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [Catalog]
+      operationId: updateCatalogObject
+      summary: Изменить фиксацию
+      description: Привязки источников меняются отдельными методами.
+      x-permission: catalog.object.manage
+      parameters:
+        - $ref: '#/components/parameters/MapObjectId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MapObjectInput' }
+      responses:
+        '200':
+          description: Фиксация обновлена
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MapObject' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+    delete:
+      tags: [Catalog]
+      operationId: deleteCatalogObject
+      summary: Удалить фиксацию
+      description: "Фиксацию с историей наблюдений удалить нельзя (409): деактивируйте её (`isActive: false`)."
+      x-permission: catalog.object.manage
+      parameters:
+        - $ref: '#/components/parameters/MapObjectId'
+      responses:
+        '204':
+          description: Удалена
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /catalog/objects/{id}/sources/{sourceId}:
+    put:
+      tags: [Catalog]
+      operationId: bindSource
+      summary: Привязать источник к фиксации
+      x-permission: catalog.object.manage
+      parameters:
+        - $ref: '#/components/parameters/MapObjectId'
+        - $ref: '#/components/parameters/SourceIdInPath'
+      responses:
+        '204':
+          description: Привязан (повтор безопасен)
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Catalog]
+      operationId: unbindSource
+      summary: Отвязать источник от фиксации
+      x-permission: catalog.object.manage
+      parameters:
+        - $ref: '#/components/parameters/MapObjectId'
+        - $ref: '#/components/parameters/SourceIdInPath'
+      responses:
+        '204':
+          description: Отвязан
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /observations/{id}/retract:
+    post:
+      tags: [Observations]
+      operationId: retractObservation
+      summary: Отозвать наблюдение
+      description: Отзыв необратим; статус фиксации пересчитывается сразу. Действие пишется в аудит.
+      x-permission: observation.retract
+      parameters:
+        - $ref: '#/components/parameters/ObservationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RetractRequest' }
+      responses:
+        '200':
+          description: Отозвано
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RetractResult' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /observations/retract-bulk:
+    post:
+      tags: [Observations]
+      operationId: retractObservationsBulk
+      summary: Пакетный отзыв наблюдений
+      description: По пользователю, источнику и/или периоду; нужен хотя бы один отбор.
+      x-permission: observation.retract
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BulkRetractRequest' }
+      responses:
+        '200':
+          description: Отозвано
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BulkRetractResult' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /objects/{id}/complaints:
+    post:
+      tags: [Observations]
+      operationId: createComplaint
+      summary: Пожаловаться на статус
+      description: Создаёт кейс в очереди модерации.
+      x-permission: observation.create
+      parameters:
+        - $ref: '#/components/parameters/MapObjectId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ComplaintRequest' }
+      responses:
+        '201':
+          description: Жалоба принята
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ComplaintCreated' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /moderation/cases:
+    get:
+      tags: [Moderation]
+      operationId: listModerationCases
+      summary: Очередь модерации
+      x-permission: moderation.queue.process
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/CaseKind'
+        - $ref: '#/components/parameters/CaseState'
+      responses:
+        '200':
+          description: Страница кейсов (старые сверху)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ModerationCasePage' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /moderation/cases/{id}:
+    get:
+      tags: [Moderation]
+      operationId: getModerationCase
+      summary: Кейс модерации
+      description: С исходным сообщением и цитатой-основанием.
+      x-permission: moderation.queue.process
+      parameters:
+        - $ref: '#/components/parameters/CaseId'
+      responses:
+        '200':
+          description: Кейс
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ModerationCase' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /moderation/cases/{id}/approve:
+    post:
+      tags: [Moderation]
+      operationId: approveModerationCase
+      summary: Принять кейс
+      description: Создаёт наблюдение. Для `object_not_found` обязателен `mapObjectId`; `sourceStatusId` позволяет поправить статус.
+      x-permission: moderation.queue.process
+      parameters:
+        - $ref: '#/components/parameters/CaseId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ApproveCaseRequest' }
+      responses:
+        '200':
+          description: Кейс принят
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ModerationCase' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /moderation/cases/{id}/reject:
+    post:
+      tags: [Moderation]
+      operationId: rejectModerationCase
+      summary: Отклонить кейс
+      x-permission: moderation.queue.process
+      parameters:
+        - $ref: '#/components/parameters/CaseId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RejectCaseRequest' }
+      responses:
+        '200':
+          description: Кейс отклонён
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ModerationCase' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Короткоживущий access-токен; refresh лежит в httpOnly-cookie
+    refreshCookie:
+      type: apiKey
+      in: cookie
+      name: refresh_token
+      description: Refresh-токен в httpOnly Secure SameSite cookie
+
+  parameters:
+    MapObjectId:
+      name: id
+      in: path
+      required: true
+      description: Идентификатор фиксации
+      schema: { type: string, format: uuid }
+    SourceId:
+      name: id
+      in: path
+      required: true
+      description: Идентификатор источника
+      schema: { type: string, format: uuid }
+    StatusId:
+      name: statusId
+      in: path
+      required: true
+      description: Идентификатор статуса источника
+      schema: { type: string, format: uuid }
+    Limit:
+      name: limit
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+    Cursor:
+      name: cursor
+      in: query
+      description: Курсор из поля `nextCursor` предыдущей страницы
+      schema: { type: string }
+
+    UserId:
+      name: id
+      in: path
+      required: true
+      description: Идентификатор пользователя
+      schema: { type: string, format: uuid }
+    SecretId:
+      name: id
+      in: path
+      required: true
+      description: Идентификатор секрета (задаёт клиент)
+      schema: { type: string, format: uuid }
+    CategoryId:
+      name: id
+      in: path
+      required: true
+      description: Идентификатор категории
+      schema: { type: string, format: uuid }
+    ObjectTypeId:
+      name: id
+      in: path
+      required: true
+      description: Идентификатор типа объекта
+      schema: { type: string, format: uuid }
+    GroupId:
+      name: id
+      in: path
+      required: true
+      description: Идентификатор группы
+      schema: { type: string, format: uuid }
+    StatusDefinitionId:
+      name: id
+      in: path
+      required: true
+      description: Идентификатор записи справочника статусов
+      schema: { type: string, format: uuid }
+    ObservationId:
+      name: id
+      in: path
+      required: true
+      description: Идентификатор наблюдения
+      schema: { type: string, format: uuid }
+    CaseId:
+      name: id
+      in: path
+      required: true
+      description: Идентификатор кейса модерации
+      schema: { type: string, format: uuid }
+    SourceIdInPath:
+      name: sourceId
+      in: path
+      required: true
+      description: Идентификатор источника
+      schema: { type: string, format: uuid }
+    UserSearch:
+      name: q
+      in: query
+      description: Поиск по имени
+      schema: { type: string, maxLength: 200 }
+    RoleFilter:
+      name: role
+      in: query
+      description: Фильтр по роли
+      schema: { type: string, enum: [user, moderator, admin] }
+    AuditActorId:
+      name: actorId
+      in: query
+      description: Кто совершил действие
+      schema: { type: string, format: uuid }
+    AuditAction:
+      name: action
+      in: query
+      description: Действие
+      schema: { type: string }
+    AuditEntityType:
+      name: entityType
+      in: query
+      description: Тип объекта
+      schema: { type: string }
+    AuditEntityId:
+      name: entityId
+      in: query
+      description: Идентификатор объекта
+      schema: { type: string }
+    AuditFrom:
+      name: from
+      in: query
+      description: Начало периода
+      schema: { type: string, format: date-time }
+    AuditTo:
+      name: to
+      in: query
+      description: Конец периода
+      schema: { type: string, format: date-time }
+    FilterCategoryId:
+      name: categoryId
+      in: query
+      description: Фильтр по категории
+      schema: { type: string, format: uuid }
+    FilterObjectTypeId:
+      name: objectTypeId
+      in: query
+      description: Фильтр по типу объекта
+      schema: { type: string, format: uuid }
+    FilterGroupId:
+      name: groupId
+      in: query
+      description: Фильтр по группе
+      schema: { type: string, format: uuid }
+    FilterSourceId:
+      name: sourceId
+      in: query
+      description: Только фиксации, привязанные к источнику
+      schema: { type: string, format: uuid }
+    FilterKind:
+      name: kind
+      in: query
+      description: Тип покрытия
+      schema: { $ref: '#/components/schemas/CoverageKind' }
+    FilterIsActive:
+      name: isActive
+      in: query
+      description: Только активные или неактивные
+      schema: { type: boolean }
+    ObjectSearch:
+      name: q
+      in: query
+      description: Поиск по названию
+      schema: { type: string, maxLength: 200 }
+    CaseKind:
+      name: kind
+      in: query
+      description: Вид кейса
+      schema: { $ref: '#/components/schemas/ModerationCaseKind' }
+    CaseState:
+      name: state
+      in: query
+      description: Состояние кейса
+      schema: { $ref: '#/components/schemas/ModerationCaseState', default: open }
+
+  responses:
+    Unauthorized:
+      description: Нужен вход
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+          example:
+            type: about:blank
+            title: Не авторизован
+            status: 401
+            detail: Войдите, чтобы выполнить действие
+    Forbidden:
+      description: Недостаточно прав
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+          example:
+            type: about:blank
+            title: Доступ запрещён
+            status: 403
+            detail: Требуется право source.manage
+    BadRequest:
+      description: Некорректный запрос (невалидный query или путь)
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+          example:
+            type: about:blank
+            title: Некорректный запрос
+            status: 400
+            detail: Запрос не может быть обработан
+    NotFound:
+      description: Не найдено
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+          example:
+            type: about:blank
+            title: Не найдено
+            status: 404
+            detail: Запрошенный объект не существует
+    Conflict:
+      description: Конфликт состояния
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+          example:
+            type: about:blank
+            title: Конфликт
+            status: 409
+            detail: По источнику есть наблюдения. Отключите источник вместо удаления
+    ValidationError:
+      description: Ошибка валидации
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ValidationProblem' }
+          example:
+            type: about:blank
+            title: Ошибка валидации
+            status: 422
+            detail: Запрос содержит недопустимые значения
+            errors:
+              - field: sourceStatusId
+                message: Статус не принадлежит выбранному источнику
+    TooManyRequests:
+      description: Превышен лимит запросов
+      headers:
+        Retry-After:
+          description: Через сколько секунд повторить
+          schema: { type: integer }
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+          example:
+            type: about:blank
+            title: Слишком много запросов
+            status: 429
+            detail: Повторите попытку позже
+
+  schemas:
+    Problem:
+      type: object
+      description: Ошибка по RFC 7807
+      required: [title, status]
+      properties:
+        type: { type: string, default: 'about:blank' }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        instance: { type: string }
+    ValidationProblem:
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          required: [errors]
+          properties:
+            errors:
+              type: array
+              items:
+                type: object
+                required: [field, message]
+                properties:
+                  field: { type: string }
+                  message: { type: string }
+
+    Text:
+      type: string
+      description: Произвольный текст
+    NonEmptyText:
+      allOf:
+        - $ref: '#/components/schemas/Text'
+      minLength: 1
+      description: Непустой текст (названия, адреса)
+
+    CoverageKind:
+      type: string
+      enum: [point, polygon]
+    SourceType:
+      type: string
+      enum: [telegram_chat, max_chat]
+    ObservationSourceType:
+      type: string
+      enum: [manual, moderator, telegram, max]
+    StatusColor:
+      type: string
+      description: Ключ палитры оформления
+      enum: [ok, limited, none, queue, schedule, stale]
+    Freshness:
+      type: string
+      enum: [fresh, aging, stale]
+    SourceState:
+      type: string
+      enum: [unknown, ok, silent, flood_wait, auth_error, error]
+
+    Me:
+      type: object
+      required: [id, displayName, roles, permissions]
+      properties:
+        id: { type: string, format: uuid }
+        displayName: { type: string }
+        roles:
+          type: array
+          items: { type: string }
+        permissions:
+          type: array
+          items: { type: string }
+      example:
+        id: 00000000-0000-0000-0000-0000000000a3
+        displayName: Ольга
+        roles: [moderator]
+        permissions: [map.read, observation.create, source.manage]
+
+    Point:
+      type: object
+      required: [type, coordinates]
+      properties:
+        type: { const: Point }
+        coordinates:
+          type: array
+          description: '[долгота, широта]'
+          minItems: 2
+          maxItems: 2
+          items: { type: number }
+    Polygon:
+      type: object
+      required: [type, coordinates]
+      properties:
+        type: { const: Polygon }
+        coordinates:
+          type: array
+          items:
+            type: array
+            minItems: 4
+            items:
+              type: array
+              minItems: 2
+              maxItems: 2
+              items: { type: number }
+    Geometry:
+      oneOf:
+        - $ref: '#/components/schemas/Point'
+        - $ref: '#/components/schemas/Polygon'
+
+    StatusView:
+      type: object
+      description: Итоговый статус фиксации. `null` в `MapFeature.status` означает «неизвестно».
+      required: [sourceStatusId, code, name, color, icon, freshness, observedAt, sourceType, observationCount]
+      properties:
+        sourceStatusId: { type: string, format: uuid }
+        code: { type: string }
+        name: { type: string }
+        color: { $ref: '#/components/schemas/StatusColor' }
+        icon: { type: string }
+        freshness: { $ref: '#/components/schemas/Freshness' }
+        observedAt: { type: string, format: date-time }
+        sourceType: { $ref: '#/components/schemas/ObservationSourceType' }
+        observationCount: { type: integer, minimum: 0, maximum: 2147483647 }
+
+    MapFeature:
+      type: object
+      required: [id, name, coverageKind, geometry, status]
+      properties:
+        id: { type: string, format: uuid }
+        name: { $ref: '#/components/schemas/NonEmptyText' }
+        coverageKind: { $ref: '#/components/schemas/CoverageKind' }
+        geometry: { $ref: '#/components/schemas/Geometry' }
+        categoryId: { type: [string, 'null'], format: uuid }
+        objectTypeId: { type: [string, 'null'], format: uuid }
+        groupId: { type: [string, 'null'], format: uuid }
+        address: { type: [string, 'null'] }
+        status:
+          oneOf:
+            - $ref: '#/components/schemas/StatusView'
+            - type: 'null'
+    MapFeaturesResponse:
+      type: object
+      required: [generatedAt, items]
+      properties:
+        generatedAt: { type: string, format: date-time }
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/MapFeature' }
+      example:
+        generatedAt: '2026-11-15T09:30:00Z'
+        items:
+          - id: 00000000-0000-0000-0000-0000000000f1
+            name: Колонка на Ленинском
+            coverageKind: point
+            geometry: { type: Point, coordinates: [37.80, 48.01] }
+            categoryId: 00000000-0000-0000-0000-0000000000c1
+            objectTypeId: null
+            groupId: null
+            address: пр. Ленинский, 12
+            status:
+              sourceStatusId: 00000000-0000-0000-0000-0000000000a9
+              code: none
+              name: Воды нет
+              color: none
+              icon: cross
+              freshness: fresh
+              observedAt: '2026-11-15T09:10:00Z'
+              sourceType: telegram
+              observationCount: 3
+
+    SourceStatusPublic:
+      type: object
+      description: Статус источника для выбора в отметке
+      required: [id, code, name, color, icon]
+      properties:
+        id: { type: string, format: uuid }
+        code: { type: string }
+        name: { type: string }
+        color: { $ref: '#/components/schemas/StatusColor' }
+        icon: { type: string }
+    SourceCardView:
+      type: object
+      required: [id, name, sourceType, timeoutSeconds, statuses, lastObservation]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        sourceType: { $ref: '#/components/schemas/SourceType' }
+        timeoutSeconds:
+          type: integer
+          description: Таймаут актуальности источника
+        statuses:
+          type: array
+          items: { $ref: '#/components/schemas/SourceStatusPublic' }
+        lastObservation:
+          description: Последнее актуальное наблюдение по источнику
+          oneOf:
+            - $ref: '#/components/schemas/PublicObservation'
+            - type: 'null'
+    MapObjectCard:
+      allOf:
+        - $ref: '#/components/schemas/MapFeature'
+        - type: object
+          required: [attributes, sources]
+          properties:
+            attributes:
+              type: object
+              additionalProperties: true
+            sources:
+              type: array
+              items: { $ref: '#/components/schemas/SourceCardView' }
+
+    PublicObservation:
+      type: object
+      description: Отметка без идентификатора автора
+      required: [id, status, observedAt, expiresAt, sourceType]
+      properties:
+        id: { type: string, format: uuid }
+        status: { $ref: '#/components/schemas/SourceStatusPublic' }
+        observedAt: { type: string, format: date-time }
+        expiresAt: { type: string, format: date-time }
+        sourceType: { $ref: '#/components/schemas/ObservationSourceType' }
+        sourceName: { type: string }
+        text:
+          type: [string, 'null']
+          description: Сообщение чата или комментарий пользователя
+        confidence:
+          type: [number, 'null']
+          minimum: 0
+          maximum: 1
+        geoDistanceM:
+          type: [integer, 'null']
+          description: Расстояние от пользователя до фиксации, информационный признак
+    ObservationPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/PublicObservation' }
+        nextCursor: { type: [string, 'null'] }
+
+    GeoLocation:
+      type: object
+      description: Геолокация браузера; используется только для расчёта расстояния, координаты не сохраняются
+      required: [lat, lon]
+      properties:
+        lat: { type: number, minimum: -90, maximum: 90 }
+        lon: { type: number, minimum: -180, maximum: 180 }
+    CreateObservationRequest:
+      type: object
+      required: [mapObjectId, sourceId, sourceStatusId]
+      additionalProperties: false
+      properties:
+        mapObjectId: { type: string, format: uuid }
+        sourceId:
+          type: string
+          format: uuid
+          description: Один из источников, привязанных к фиксации
+        sourceStatusId:
+          type: string
+          format: uuid
+          description: Статус из списка выбранного источника
+        comment:
+          type: string
+          maxLength: 500
+          description: Необязательный текст; максимальная длина — настройка админа
+        location: { $ref: '#/components/schemas/GeoLocation' }
+      example:
+        mapObjectId: 00000000-0000-0000-0000-0000000000f1
+        sourceId: 00000000-0000-0000-0000-0000000000e1
+        sourceStatusId: 00000000-0000-0000-0000-0000000000a9
+        comment: Воды нет с утра
+    CreateObservationResponse:
+      type: object
+      required: [observation, status]
+      properties:
+        observation: { $ref: '#/components/schemas/PublicObservation' }
+        status:
+          description: Пересчитанный итоговый статус фиксации
+          oneOf:
+            - $ref: '#/components/schemas/StatusView'
+            - type: 'null'
+
+    SourcePrefilter:
+      type: object
+      description: Дешёвый префильтр до LLM
+      properties:
+        keywords:
+          type: array
+          items: { type: string }
+        regex:
+          type: array
+          items: { type: string }
+    SourceUpdate:
+      type: object
+      required: [name, sourceType, chatId, timeoutSeconds, userPrompt, linkByText]
+      additionalProperties: false
+      properties:
+        name: { $ref: '#/components/schemas/NonEmptyText' }
+        sourceType: { $ref: '#/components/schemas/SourceType' }
+        chatId:
+          type: string
+          description: Идентификатор или ссылка на чат (зависит от типа)
+        timeoutSeconds:
+          type: integer
+          minimum: 60
+          maximum: 2147483647
+          description: Таймаут актуальности наблюдений
+        confidenceThreshold:
+          type: [number, 'null']
+          minimum: 0
+          maximum: 1
+          description: Порог уверенности LLM; `null` — значение по умолчанию из настроек
+        prefilter:
+          oneOf:
+            - $ref: '#/components/schemas/SourcePrefilter'
+            - type: 'null'
+        userPrompt:
+          type: string
+          description: Промпт-фильтр пользователя; системный промпт добавляется автоматически
+        linkByText:
+          type: boolean
+          default: true
+          description: Режим «определять фиксацию по тексту сообщения»
+    SourceCreate:
+      type: object
+      additionalProperties: false
+      required: [name, sourceType, chatId, timeoutSeconds, userPrompt, linkByText, statuses]
+      properties:
+        name: { $ref: '#/components/schemas/NonEmptyText' }
+        sourceType: { $ref: '#/components/schemas/SourceType' }
+        chatId:
+          type: string
+          description: Идентификатор или ссылка на чат (зависит от типа)
+        timeoutSeconds:
+          type: integer
+          minimum: 60
+          maximum: 2147483647
+          description: Таймаут актуальности наблюдений
+        confidenceThreshold:
+          type: [number, 'null']
+          minimum: 0
+          maximum: 1
+          description: Порог уверенности LLM; `null` — значение по умолчанию из настроек
+        prefilter:
+          oneOf:
+            - $ref: '#/components/schemas/SourcePrefilter'
+            - type: 'null'
+        userPrompt:
+          type: string
+          description: Промпт-фильтр пользователя; системный промпт добавляется автоматически
+        linkByText:
+          type: boolean
+          default: true
+          description: Режим «определять фиксацию по тексту сообщения»
+        statuses:
+          type: array
+          minItems: 1
+          items: { $ref: '#/components/schemas/SourceStatusInput' }
+      example:
+        name: Чат жильцов Калининского
+        sourceType: telegram_chat
+        chatId: '@kalininsky_water'
+        timeoutSeconds: 21600
+        userPrompt: Ищи в чате все упоминания про подачу и прекращение подачи воды.
+        linkByText: true
+        statuses:
+          - code: ok
+            name: Вода есть
+            description: Подача воды идёт или возобновилась
+            color: ok
+            icon: drop
+          - code: none
+            name: Воды нет
+            description: Подача воды прекращена
+            color: none
+            icon: cross
+    Source:
+      type: object
+      additionalProperties: false
+      required: [id, name, sourceType, chatId, timeoutSeconds, userPrompt, linkByText, isEnabled, state, statuses, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        name: { $ref: '#/components/schemas/NonEmptyText' }
+        sourceType: { $ref: '#/components/schemas/SourceType' }
+        chatId:
+          type: string
+          description: Идентификатор или ссылка на чат (зависит от типа)
+        timeoutSeconds:
+          type: integer
+          minimum: 60
+          maximum: 2147483647
+          description: Таймаут актуальности наблюдений
+        confidenceThreshold:
+          type: [number, 'null']
+          minimum: 0
+          maximum: 1
+          description: Порог уверенности LLM; `null` — значение по умолчанию из настроек
+        prefilter:
+          oneOf:
+            - $ref: '#/components/schemas/SourcePrefilter'
+            - type: 'null'
+        userPrompt:
+          type: string
+          description: Промпт-фильтр пользователя; системный промпт добавляется автоматически
+        linkByText:
+          type: boolean
+          default: true
+          description: Режим «определять фиксацию по тексту сообщения»
+        isEnabled: { type: boolean }
+        state: { $ref: '#/components/schemas/SourceState' }
+        lastMessageAt: { type: [string, 'null'], format: date-time }
+        createdAt: { type: string, format: date-time }
+        statuses:
+          type: array
+          items: { $ref: '#/components/schemas/SourceStatus' }
+      example:
+        id: 00000000-0000-0000-0000-0000000000e1
+        name: Чат жильцов Калининского
+        sourceType: telegram_chat
+        chatId: '@kalininsky_water'
+        timeoutSeconds: 21600
+        confidenceThreshold: null
+        prefilter: null
+        userPrompt: Ищи в чате все упоминания про подачу и прекращение подачи воды.
+        linkByText: true
+        isEnabled: true
+        state: ok
+        lastMessageAt: '2026-11-15T09:12:00Z'
+        createdAt: '2026-11-01T08:00:00Z'
+        statuses:
+          - id: 00000000-0000-0000-0000-0000000000a8
+            code: ok
+            name: Вода есть
+            description: Подача воды идёт или возобновилась
+            color: ok
+            icon: drop
+            sortOrder: 1
+            statusDefinitionId: null
+          - id: 00000000-0000-0000-0000-0000000000a9
+            code: none
+            name: Воды нет
+            description: Подача воды прекращена
+            color: none
+            icon: cross
+            sortOrder: 2
+            statusDefinitionId: null
+    SourcePage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/Source' }
+        nextCursor: { type: [string, 'null'] }
+    SourceHealth:
+      type: object
+      required: [state]
+      properties:
+        state: { $ref: '#/components/schemas/SourceState' }
+        lastMessageAt: { type: [string, 'null'], format: date-time }
+        floodWaitUntil: { type: [string, 'null'], format: date-time }
+        lastError: { type: [string, 'null'] }
+
+    SourceStatusInput:
+      type: object
+      additionalProperties: false
+      anyOf:
+        - required: [statusDefinitionId]
+          properties:
+            statusDefinitionId: { type: string, format: uuid }
+        - required: [code, name, color, icon]
+      properties:
+        code:
+          type: string
+          pattern: '^[a-z0-9_]+$'
+          description: Код, уникальный внутри источника
+        name: { $ref: '#/components/schemas/NonEmptyText' }
+        description:
+          $ref: '#/components/schemas/Text'
+          description: Что означает статус (подсказка для LLM)
+        color: { $ref: '#/components/schemas/StatusColor' }
+        icon:
+          type: string
+          pattern: '^[a-z0-9-]+$'
+        sortOrder: { type: integer, minimum: -2147483648, maximum: 2147483647, default: 0 }
+        statusDefinitionId:
+          type: [string, 'null']
+          format: uuid
+          description: Запись справочника, из которой создан статус
+    SourceStatus:
+      type: object
+      additionalProperties: false
+      required: [id, code, name, color, icon]
+      properties:
+        id: { type: string, format: uuid }
+        code:
+          type: string
+          pattern: '^[a-z0-9_]+$'
+          description: Код, уникальный внутри источника
+        name: { $ref: '#/components/schemas/NonEmptyText' }
+        description:
+          $ref: '#/components/schemas/Text'
+          description: Что означает статус (подсказка для LLM)
+        color: { $ref: '#/components/schemas/StatusColor' }
+        icon:
+          type: string
+          pattern: '^[a-z0-9-]+$'
+        sortOrder: { type: integer, minimum: -2147483648, maximum: 2147483647, default: 0 }
+        statusDefinitionId:
+          type: [string, 'null']
+          format: uuid
+
+    TokenResponse:
+      type: object
+      required: [accessToken, expiresIn]
+      properties:
+        accessToken: { type: string }
+        expiresIn: { type: integer, minimum: 0, maximum: 2147483647, description: "Срок жизни access-токена, секунды" }
+
+    AdminUser:
+      type: object
+      required: [id, displayName, maxUserId, roles, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        displayName: { type: string }
+        maxUserId: { type: integer, minimum: 0, maximum: 9223372036854775807, format: int64 }
+        roles:
+          type: array
+          items: { $ref: '#/components/schemas/RoleName' }
+        createdAt: { type: string, format: date-time }
+        lastLoginAt: { type: [string, 'null'], format: date-time }
+    RoleName:
+      type: string
+      enum: [user, moderator, admin]
+    AdminUserPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/AdminUser' }
+        nextCursor: { type: [string, 'null'] }
+    SetRolesRequest:
+      type: object
+      required: [roles]
+      additionalProperties: false
+      properties:
+        roles:
+          type: array
+          uniqueItems: true
+          items: { $ref: '#/components/schemas/RoleName' }
+      example:
+        roles: [user, moderator]
+
+    AuditEntry:
+      type: object
+      required: [id, action, at]
+      properties:
+        id: { type: integer, minimum: 0, maximum: 9223372036854775807, format: int64 }
+        actorId: { type: [string, 'null'], format: uuid }
+        actorName: { type: [string, 'null'] }
+        action: { type: string, description: 'Например: source.update, observation.retract' }
+        entityType: { type: [string, 'null'] }
+        entityId: { type: [string, 'null'] }
+        before: { type: [object, 'null'], additionalProperties: true }
+        after: { type: [object, 'null'], additionalProperties: true }
+        reason: { type: [string, 'null'] }
+        ip: { type: [string, 'null'] }
+        userAgent: { type: [string, 'null'] }
+        at: { type: string, format: date-time }
+    AuditPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/AuditEntry' }
+        nextCursor: { type: [string, 'null'] }
+
+    GlobalSettingsPatch:
+      type: object
+      additionalProperties: false
+      properties:
+        observationRatePerHour: { type: integer, minimum: 1, maximum: 2147483647, description: Лимит отметок на пользователя в час }
+        commentMaxLength: { type: integer, minimum: 1, maximum: 5000, description: Максимальная длина комментария к отметке }
+        confidenceThresholdDefault: { type: number, minimum: 0, maximum: 1, description: Порог уверенности LLM по умолчанию }
+        anomalyWindowMinutes: { type: integer, minimum: 1, maximum: 2147483647, description: Окно детектора аномалий }
+        anomalyThreshold: { type: integer, minimum: 1, maximum: 2147483647, description: "Порог отметок в окне, после которого фиксация замораживается" }
+        freshnessFreshRatio: { type: number, exclusiveMinimum: 0, exclusiveMaximum: 1, description: "Доля таймаута, до которой статус считается свежим" }
+        proxySecretId: { type: [string, 'null'], format: uuid, description: Глобальный прокси (секрет вида proxy) }
+    GlobalSettings:
+      type: object
+      additionalProperties: false
+      required: [observationRatePerHour, commentMaxLength, confidenceThresholdDefault, anomalyWindowMinutes, anomalyThreshold, freshnessFreshRatio, proxySecretId]
+      properties:
+        observationRatePerHour: { type: integer, minimum: 1, maximum: 2147483647, description: Лимит отметок на пользователя в час }
+        commentMaxLength: { type: integer, minimum: 1, maximum: 5000, description: Максимальная длина комментария к отметке }
+        confidenceThresholdDefault: { type: number, minimum: 0, maximum: 1, description: Порог уверенности LLM по умолчанию }
+        anomalyWindowMinutes: { type: integer, minimum: 1, maximum: 2147483647, description: Окно детектора аномалий }
+        anomalyThreshold: { type: integer, minimum: 1, maximum: 2147483647, description: "Порог отметок в окне, после которого фиксация замораживается" }
+        freshnessFreshRatio: { type: number, exclusiveMinimum: 0, exclusiveMaximum: 1, description: "Доля таймаута, до которой статус считается свежим" }
+        proxySecretId: { type: [string, 'null'], format: uuid, description: Глобальный прокси (секрет вида proxy) }
+      example:
+        observationRatePerHour: 20
+        commentMaxLength: 500
+        confidenceThresholdDefault: 0.7
+        anomalyWindowMinutes: 5
+        anomalyThreshold: 30
+        freshnessFreshRatio: 0.5
+        proxySecretId: null
+
+    SecretKind:
+      type: string
+      enum: [telegram_session, proxy, llm]
+    SecretMeta:
+      type: object
+      description: Метаданные секрета; значение не возвращается никогда
+      required: [id, kind, name, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        kind: { $ref: '#/components/schemas/SecretKind' }
+        name: { type: string }
+        proxyId: { type: [string, 'null'], format: uuid, description: "Прокси, назначенный аккаунту Telegram или LLM" }
+        updatedAt: { type: string, format: date-time }
+    TelegramSessionSecret:
+      type: object
+      required: [name, session]
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1, description: Название записи в списке }
+        session: { type: string, writeOnly: true, minLength: 1, description: Токен Telegram-бота (Bot API) }
+        proxyId: { type: [string, 'null'], format: uuid }
+    ProxySecret:
+      type: object
+      required: [name, scheme, host, port]
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1 }
+        scheme: { type: string, enum: [socks5, mtproxy] }
+        host: { type: string, minLength: 1 }
+        port: { type: integer, minimum: 1, maximum: 65535 }
+        username: { type: string }
+        password: { type: string, writeOnly: true }
+    LlmSecret:
+      type: object
+      required: [apiKey, baseUrl, model]
+      additionalProperties: false
+      properties:
+        apiKey: { type: string, writeOnly: true, minLength: 1 }
+        baseUrl: { type: string, format: uri, writeOnly: true }
+        model: { type: string, minLength: 1, writeOnly: true }
+        proxyId: { type: [string, 'null'], format: uuid }
+    SourceConnection:
+      type: object
+      description: Какие секреты использует источник (идентификаторы, не значения)
+      additionalProperties: false
+      properties:
+        telegramSessionId: { type: [string, 'null'], format: uuid }
+        proxyId: { type: [string, 'null'], format: uuid }
+
+    Category:
+      type: object
+      additionalProperties: false
+      required: [id, code, name]
+      properties:
+        id: { type: string, format: uuid }
+        code: { type: string, pattern: '^[a-z0-9_]+$' }
+        name: { $ref: '#/components/schemas/NonEmptyText' }
+        icon: { type: [string, 'null'] }
+        sortOrder: { type: integer, minimum: -2147483648, maximum: 2147483647, default: 0 }
+        isActive: { type: boolean, default: true }
+    CategoryInput:
+      type: object
+      required: [code, name]
+      additionalProperties: false
+      properties:
+        code: { type: string, pattern: '^[a-z0-9_]+$' }
+        name: { $ref: '#/components/schemas/NonEmptyText' }
+        icon: { type: [string, 'null'] }
+        sortOrder: { type: integer, minimum: -2147483648, maximum: 2147483647, default: 0 }
+        isActive: { type: boolean, default: true }
+      example:
+        code: water
+        name: Вода
+        icon: drop
+        sortOrder: 1
+        isActive: true
+    ObjectType:
+      type: object
+      additionalProperties: false
+      required: [id, categoryId, code, name]
+      properties:
+        id: { type: string, format: uuid }
+        categoryId: { type: string, format: uuid }
+        code: { type: string, pattern: '^[a-z0-9_]+$' }
+        name: { $ref: '#/components/schemas/NonEmptyText' }
+        attributesSchema:
+          type: object
+          additionalProperties: true
+          description: JSON Schema атрибутов фиксаций этого типа
+        geometryKind:
+          type: string
+          enum: [point, polygon, any]
+          default: any
+    ObjectTypeInput:
+      type: object
+      required: [categoryId, code, name]
+      additionalProperties: false
+      properties:
+        categoryId: { type: string, format: uuid }
+        code: { type: string, pattern: '^[a-z0-9_]+$' }
+        name: { $ref: '#/components/schemas/NonEmptyText' }
+        attributesSchema:
+          type: object
+          additionalProperties: true
+          description: JSON Schema атрибутов фиксаций этого типа
+        geometryKind:
+          type: string
+          enum: [point, polygon, any]
+          default: any
+    ObjectGroup:
+      type: object
+      additionalProperties: false
+      required: [id, name]
+      properties:
+        id: { type: string, format: uuid }
+        categoryId: { type: [string, 'null'], format: uuid }
+        name: { $ref: '#/components/schemas/NonEmptyText' }
+        color: { type: [string, 'null'] }
+        isVisibleByDefault: { type: boolean, default: true }
+    ObjectGroupInput:
+      type: object
+      required: [name]
+      additionalProperties: false
+      properties:
+        categoryId: { type: [string, 'null'], format: uuid }
+        name: { $ref: '#/components/schemas/NonEmptyText' }
+        color: { type: [string, 'null'] }
+        isVisibleByDefault: { type: boolean, default: true }
+    StatusDefinition:
+      type: object
+      additionalProperties: false
+      required: [id, code, name, color, icon]
+      properties:
+        id: { type: string, format: uuid }
+        categoryId: { type: [string, 'null'], format: uuid }
+        code: { type: string, pattern: '^[a-z0-9_]+$' }
+        name: { $ref: '#/components/schemas/NonEmptyText' }
+        color: { $ref: '#/components/schemas/StatusColor' }
+        icon: { type: string, pattern: '^[a-z0-9-]+$' }
+        severity: { type: integer, minimum: -2147483648, maximum: 2147483647, default: 0 }
+        isPositive: { type: boolean, default: false }
+    StatusDefinitionInput:
+      type: object
+      required: [code, name, color, icon]
+      additionalProperties: false
+      properties:
+        categoryId: { type: [string, 'null'], format: uuid }
+        code: { type: string, pattern: '^[a-z0-9_]+$' }
+        name: { $ref: '#/components/schemas/NonEmptyText' }
+        color: { $ref: '#/components/schemas/StatusColor' }
+        icon: { type: string, pattern: '^[a-z0-9-]+$' }
+        severity: { type: integer, minimum: -2147483648, maximum: 2147483647, default: 0 }
+        isPositive: { type: boolean, default: false }
+
+    MapObjectInput:
+      type: object
+      required: [name, coverageKind, geometry]
+      additionalProperties: false
+      properties:
+        name: { $ref: '#/components/schemas/NonEmptyText' }
+        objectTypeId: { type: [string, 'null'], format: uuid }
+        groupId: { type: [string, 'null'], format: uuid }
+        coverageKind: { $ref: '#/components/schemas/CoverageKind' }
+        geometry: { $ref: '#/components/schemas/Geometry' }
+        attributes:
+          type: object
+          additionalProperties: true
+          default: {}
+        address: { $ref: '#/components/schemas/Text' }
+        isActive: { type: boolean, default: true }
+        sourceIds:
+          type: array
+          uniqueItems: true
+          description: Источники, привязываемые при создании
+          items: { type: string, format: uuid }
+      example:
+        name: Колонка на Ленинском
+        coverageKind: point
+        geometry: { type: Point, coordinates: [37.80, 48.01] }
+        address: пр. Ленинский, 12
+        sourceIds: [00000000-0000-0000-0000-0000000000e1]
+    MapObject:
+      type: object
+      description: Фиксация в редакторском виде
+      required: [id, name, coverageKind, geometry, attributes, isActive, sourceIds]
+      properties:
+        id: { type: string, format: uuid }
+        name: { $ref: '#/components/schemas/NonEmptyText' }
+        objectTypeId: { type: [string, 'null'], format: uuid }
+        groupId: { type: [string, 'null'], format: uuid }
+        coverageKind: { $ref: '#/components/schemas/CoverageKind' }
+        geometry: { $ref: '#/components/schemas/Geometry' }
+        attributes: { type: object, additionalProperties: true }
+        address: { type: [string, 'null'] }
+        isActive: { type: boolean }
+        sourceIds:
+          type: array
+          items: { type: string, format: uuid }
+    MapObjectPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/MapObject' }
+        nextCursor: { type: [string, 'null'] }
+
+    RetractRequest:
+      type: object
+      required: [reason]
+      additionalProperties: false
+      properties:
+        reason: { type: string, minLength: 1, maxLength: 1000 }
+    RetractResult:
+      type: object
+      required: [status]
+      properties:
+        status:
+          description: Статус фиксации после пересчёта
+          oneOf:
+            - $ref: '#/components/schemas/StatusView'
+            - type: 'null'
+    BulkRetractRequest:
+      type: object
+      required: [reason]
+      additionalProperties: false
+      properties:
+        reason: { type: string, minLength: 1, maxLength: 1000 }
+        reporterId: { type: string, format: uuid, description: Автор отметок }
+        sourceId: { type: string, format: uuid }
+        from: { type: string, format: date-time }
+        to: { type: string, format: date-time }
+      anyOf:
+        - required: [reporterId]
+        - required: [sourceId]
+        - required: [from, to]
+    BulkRetractResult:
+      type: object
+      required: [retractedCount]
+      properties:
+        retractedCount: { type: integer, minimum: 0, maximum: 2147483647 }
+    ComplaintRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        observationId: { type: string, format: uuid, description: На какое наблюдение жалоба (необязательно) }
+        text: { type: string, maxLength: 1000 }
+    ComplaintCreated:
+      type: object
+      required: [caseId]
+      properties:
+        caseId: { type: string, format: uuid }
+
+    ModerationCaseKind:
+      type: string
+      enum: [low_confidence, invalid_status, object_not_found, invalid_response, anomaly, complaint]
+    ModerationCaseState:
+      type: string
+      enum: [open, approved, rejected, dismissed]
+    ModerationCaseSummary:
+      type: object
+      required: [id, kind, state, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        kind: { $ref: '#/components/schemas/ModerationCaseKind' }
+        state: { $ref: '#/components/schemas/ModerationCaseState' }
+        createdAt: { type: string, format: date-time }
+        sourceName: { type: [string, 'null'] }
+        mapObjectName: { type: [string, 'null'] }
+        messageExcerpt: { type: [string, 'null'] }
+    ModerationCasePage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/ModerationCaseSummary' }
+        nextCursor: { type: [string, 'null'] }
+    RawMessageView:
+      type: object
+      required: [text, postedAt]
+      properties:
+        text: { type: string }
+        postedAt: { type: string, format: date-time }
+        author: { type: [string, 'null'], description: Только для модераторов }
+        link: { type: [string, 'null'] }
+    ProposedObservation:
+      type: object
+      description: Что предложила система
+      properties:
+        sourceStatusId: { type: [string, 'null'], format: uuid }
+        statusCode: { type: [string, 'null'] }
+        confidence: { type: [number, 'null'], minimum: 0, maximum: 1 }
+        evidenceQuote: { type: [string, 'null'] }
+    ModerationCase:
+      allOf:
+        - $ref: '#/components/schemas/ModerationCaseSummary'
+        - type: object
+          properties:
+            sourceId: { type: [string, 'null'], format: uuid }
+            mapObjectId: { type: [string, 'null'], format: uuid }
+            observationId: { type: [string, 'null'], format: uuid }
+            rawMessage:
+              oneOf:
+                - $ref: '#/components/schemas/RawMessageView'
+                - type: 'null'
+            proposed:
+              oneOf:
+                - $ref: '#/components/schemas/ProposedObservation'
+                - type: 'null'
+            complaintText: { type: [string, 'null'] }
+            resolvedAt: { type: [string, 'null'], format: date-time }
+            resolvedBy: { type: [string, 'null'], format: uuid }
+    ApproveCaseRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        mapObjectId:
+          type: string
+          format: uuid
+          description: Обязательно для кейса `object_not_found` — фиксация из списка источника
+        sourceStatusId:
+          type: string
+          format: uuid
+          description: Поправить предложенный статус
+    RejectCaseRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        reason: { type: string, maxLength: 1000 }

@@ -1,0 +1,50 @@
+// Раскладка оболочки. Навигация переключается атрибутом data-layout на <html>:
+// side — боковое меню, top — горизонтальное меню в шапке.
+
+.shell { min-height: 100dvh; display: grid; grid-template-rows: var(--header-h) 1fr; grid-template-columns: 1fr; }
+
+.topbar {
+  grid-column: 1 / -1; display: flex; align-items: center; gap: 12px; padding: 0 var(--gap);
+  background: var(--bar); color: var(--bar-ink);
+  position: sticky; top: 0; z-index: 20;
+  &__tools { margin-left: auto; display: flex; gap: 8px; }
+}
+
+.brand { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--bar-ink); font-family: var(--font-display); font-weight: 600; font-size: 14px;
+  small { font-family: var(--font-ui); color: color-mix(in srgb, var(--bar-ink) 60%, transparent); font-weight: 500; }
+  .logo { display: grid; place-items: center; width: 32px; height: 32px; border-radius: var(--r-md); background: var(--st-ok); color: #fff; } }
+
+.topbar .btn { background: transparent; color: var(--bar-ink); border-color: color-mix(in srgb, var(--bar-ink) 30%, transparent);
+  &:hover { background: color-mix(in srgb, var(--bar-ink) 12%, transparent); }
+  &--primary { background: var(--bar-ink); color: var(--bar); border-color: var(--bar-ink); &:hover { background: #fff; } } }
+.user small { opacity: 0.65; margin-left: 4px; }
+.topbar a.btn { text-decoration: none; }
+
+.nav { display: flex; gap: 4px;
+  a { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: var(--r-md); color: var(--ink-2); text-decoration: none; font-weight: 500; white-space: nowrap;
+    &:hover { background: var(--surface-3); }
+    &.is-active { background: var(--surface-3); color: var(--ink); font-weight: 600; box-shadow: inset 3px 0 0 var(--brand); } } }
+
+.content { min-width: 0; }
+.menu-btn { display: none; }
+
+// ——— Боковое меню (по умолчанию) ———
+:root[data-layout='side'] .shell { grid-template-columns: var(--sidebar-w) 1fr; }
+:root[data-layout='side'] .nav--top { display: none; }
+:root[data-layout='side'] .shell[data-has-nav='false'] { grid-template-columns: 1fr; }
+:root[data-layout='side'] .shell[data-has-nav='false'] .nav--side { display: none; }
+:root[data-layout='side'] .nav--side { flex-direction: column; padding: var(--gap) 12px; border-right: 1px solid var(--line-soft); background: var(--surface); position: sticky; top: var(--header-h); height: calc(100dvh - var(--header-h)); }
+
+// ——— Верхнее меню ———
+:root[data-layout='top'] .nav--side { display: none; }
+:root[data-layout='top'] .nav--top { margin-left: 16px; }
+
+
+@media (max-width: 900px) {
+  .hide-sm { display: none; }
+  .nav--top { display: none !important; }
+  .menu-btn { display: inline-flex; }
+  .shell { grid-template-columns: 1fr !important; }
+  .nav--side { display: none !important; position: fixed !important; top: var(--header-h); left: 0; bottom: 0; width: var(--sidebar-w); z-index: 25; }
+  .shell[data-nav-open='true'] .nav--side { display: flex !important; flex-direction: column; box-shadow: var(--shadow-float); height: auto !important; padding: var(--gap) 12px; background: var(--surface); }
+}

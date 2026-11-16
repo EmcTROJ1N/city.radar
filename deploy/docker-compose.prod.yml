@@ -1,0 +1,270 @@
+# Production-развёртывание портала: Api, IngestionWorker, PostGIS, Redis,
+# reverse-proxy, бэкапы и одноразовый шаг миграций. Без Kubernetes.
+#
+# Запуск (из каталога deploy):
+#   cp .env.example .env                      # заполнить значения, секреты — файлами
+#   ./migrate.sh                              # или docker compose -f docker-compose.prod.yml run --rm migrate
+#   docker compose -f docker-compose.prod.yml up -d --build
+#
+# Сервис migrate выполняется до api (depends_on: service_completed_successfully) и применяет только
+# миграции и роли: Api в Production схему при старте не создаёт.
+#
+# api не зависит от ingestion-worker: остановка Worker не влияет на карту и ручные отметки
+#. Worker останавливают отдельно: docker compose stop ingestion-worker.
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-app-environment: &app-environment
+  ASPNETCORE_ENVIRONMENT: Production
+  # Строка подключения — переменная окружения (в реальной эксплуатации — из secret manager-а).
+  ConnectionStrings__Mayak: "Host=postgres;Port=5432;Database=${POSTGRES_DB:-mayak};Username=${POSTGRES_USER:-mayak};Password=${POSTGRES_PASSWORD:?задайте POSTGRES_PASSWORD в deploy/.env}"
+  ConnectionStrings__Redis: "redis:6379"
+  Jwt__Issuer: ${JWT_ISSUER:-mayak}
+  Jwt__Audience: ${JWT_AUDIENCE:-mayak}
+  Jwt__AccessTokenMinutes: ${JWT_ACCESS_TOKEN_MINUTES:-15}
+  Jwt__RefreshTokenDays: ${JWT_REFRESH_TOKEN_DAYS:-30}
+  # Файлы Docker secrets: entrypoint читает JWT-ключ в Jwt__SigningKey до старта процесса.
+  JWT_SIGNING_KEY_FILE: /run/secrets/jwt_signing_key
+  # Мастер-ключ шифрования секретов источников читает само приложение.
+  MAYAK_MASTER_KEY_FILE: /run/secrets/mayak_master_key
+  # Версия текущего ключа: увеличивается при ротации (см. docker-compose.rotate.yml).
+  MAYAK_MASTER_KEY_VERSION: ${MAYAK_MASTER_KEY_VERSION:-1}
+
+services:
+  # Одноразовый шаг миграций: тот же образ, что у api, но без секретов приложения — схеме они
+  # не нужны. Завершается с кодом 0 (успех) или 1 (ошибка), api ждёт успешного завершения.
+  migrate:
+    image: mayak-api:${MAYAK_IMAGE_TAG:-local}
+    build:
+      context: ../backend
+      dockerfile: src/Host/Api.Host/Dockerfile
+    command: ["dotnet", "Api.Host.dll", "--migrate-only"]
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ConnectionStrings__Mayak: "Host=postgres;Port=5432;Database=${POSTGRES_DB:-mayak};Username=${POSTGRES_USER:-mayak};Password=${POSTGRES_PASSWORD:?задайте POSTGRES_PASSWORD в deploy/.env}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+    networks:
+      - app
+      - data
+    logging: *default-logging
+
+  api:
+    image: mayak-api:${MAYAK_IMAGE_TAG:-local}
+    build:
+      context: ../backend
+      dockerfile: src/Host/Api.Host/Dockerfile
+    environment:
+      <<: *app-environment
+      # Фоновый диспетчер outbox публикует результаты Worker-а в Api.
+      Outbox__ApiDispatcherEnabled: "true"
+    secrets:
+      - mayak_master_key
+      - jwt_signing_key
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    init: true
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8080/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+    stop_grace_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 1g
+    networks:
+      - app
+      - data
+    logging: *default-logging
+
+  # Сбор и разбор источников. Намеренно НЕ в depends_on у api: падение/остановка Worker-а
+  # не должна влиять на доступность Api.
+  ingestion-worker:
+    image: mayak-worker:${MAYAK_IMAGE_TAG:-local}
+    build:
+      context: ../backend
+      dockerfile: src/Host/IngestionWorker.Host/Dockerfile
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      DOTNET_ENVIRONMENT: Production
+      ConnectionStrings__Mayak: "Host=postgres;Port=5432;Database=${POSTGRES_DB:-mayak};Username=${POSTGRES_USER:-mayak};Password=${POSTGRES_PASSWORD:?задайте POSTGRES_PASSWORD в deploy/.env}"
+      ConnectionStrings__Redis: "redis:6379"
+      MAYAK_MASTER_KEY_FILE: /run/secrets/mayak_master_key
+      MAYAK_MASTER_KEY_VERSION: ${MAYAK_MASTER_KEY_VERSION:-1}
+      Worker__ConfigPollSeconds: ${WORKER_CONFIG_POLL_SECONDS:-10}
+    secrets:
+      - mayak_master_key
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f 'IngestionWorker.Host.dll' > /dev/null || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 768m
+    networks:
+      - app
+      - data
+    logging: *default-logging
+
+  postgres:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-mayak}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?задайте POSTGRES_PASSWORD в deploy/.env}
+      POSTGRES_DB: ${POSTGRES_DB:-mayak}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 15s
+    shm_size: 256mb
+    restart: unless-stopped
+    # Порт наружу не публикуется: БД доступна только сервисам сети data.
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2g
+    networks:
+      - data
+    logging: *default-logging
+
+  redis:
+    image: redis:7-alpine
+    # Кэш карты и rate limit: персистентность не нужна, при перезапуске кэш прогревается заново.
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep -q PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 384m
+    networks:
+      - data
+    logging: *default-logging
+
+  reverse-proxy:
+    image: mayak-proxy:${MAYAK_IMAGE_TAG:-local}
+    build:
+      context: ./nginx
+    ports:
+      - "${PROXY_HTTP_PORT:-8080}:80"
+      - "${PROXY_HTTPS_PORT:-8443}:443"
+    depends_on:
+      api:
+        condition: service_healthy
+    volumes:
+      # Сертификат-заглушка генерируется при первом старте (deploy/nginx/10-self-signed-cert.sh).
+      - proxy-certs:/etc/nginx/certs
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/healthz || exit 1"]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 256m
+    networks:
+      - public
+      - app
+    logging: *default-logging
+
+  # Ежедневный pg_dump с ротацией. RPO ≤ 15 минут требует WAL-архивации — TODO.
+  backup:
+    image: postgis/postgis:16-3.4
+    entrypoint: ["/bin/sh", "/usr/local/bin/backup.sh"]
+    environment:
+      PGHOST: postgres
+      PGUSER: ${POSTGRES_USER:-mayak}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?задайте POSTGRES_PASSWORD в deploy/.env}
+      PGDATABASE: ${POSTGRES_DB:-mayak}
+      BACKUP_INTERVAL_SECONDS: ${BACKUP_INTERVAL_SECONDS:-86400}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
+      BACKUP_DIR: /backups
+    volumes:
+      - ./backup/backup.sh:/usr/local/bin/backup.sh:ro
+      - pgbackups:/backups
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      # Маркер пишется только после успешного pg_dump.
+      test: ["CMD-SHELL", "test -f /backups/.last-success || exit 1"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 120s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256m
+    networks:
+      - data
+    logging: *default-logging
+
+networks:
+  # Наружу смотрит только reverse-proxy.
+  public:
+    driver: bridge
+  # Api, Worker, migrate и proxy: сеть с egress (Telegram/LLM из Worker-а).
+  app:
+    driver: bridge
+  # БД и кэш изолированы: egress и доступ из public-сети запрещены.
+  data:
+    driver: bridge
+    internal: true
+
+volumes:
+  pgdata:
+  pgbackups:
+  proxy-certs:
+
+secrets:
+  # Файлы создаются на хосте до деплоя, пути — в deploy/.env (см. .env.example и runbook).
+  mayak_master_key:
+    file: ${MAYAK_MASTER_KEY_PATH:-./secrets/mayak_master_key}
+  jwt_signing_key:
+    file: ${JWT_SIGNING_KEY_PATH:-./secrets/jwt_signing_key}

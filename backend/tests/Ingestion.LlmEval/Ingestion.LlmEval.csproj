@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <AssemblyName>Ingestion.LlmEval</AssemblyName>
+    <RootNamespace>Ingestion.LlmEval</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Ingestion\Ingestion.LlmEval.Core\Ingestion.LlmEval.Core.csproj" />
+    <ProjectReference Include="..\..\src\Ingestion\Ingestion.Abstractions\Ingestion.Abstractions.csproj" />
+    <ProjectReference Include="..\..\src\Ingestion\Ingestion.Pipeline\Ingestion.Pipeline.csproj" />
+    <ProjectReference Include="..\..\src\Ingestion\Ingestion.Llm.OpenAi\Ingestion.Llm.OpenAi.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Sources\Sources.Contracts\Sources.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Catalog\Catalog.Contracts\Catalog.Contracts.csproj" />
+  </ItemGroup>
+
+</Project>

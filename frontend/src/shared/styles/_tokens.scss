@@ -1,0 +1,115 @@
+// Все визуальные решения — здесь. Меняйте переменные, а не компоненты.
+// Оформление (тема, акцент, скругления, плотность, раскладка) выбирается в shared/config/ui.config.ts
+// и применяется как data-атрибуты на <html>.
+//
+// Образ: диспетчерская водоканала. Вода синяя, «сухо» — ржавое; кнопки и шапка — тёмный петроль,
+// чтобы действия не путались со статусами.
+
+:root {
+  color-scheme: light;
+  --font-ui: 'Onest Variable', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-display: 'Unbounded Variable', var(--font-ui);
+
+  // Бумага чертежа и поверхности
+  --bg: #e8efee;
+  --surface: #fbfdfc;
+  --surface-2: #f0f5f4;
+  --surface-3: #e0e9e7;
+  --glass: rgb(251 253 252 / 0.92);
+  --ink: #0f2a33;
+  --ink-2: #3c5660;
+  --ink-3: #657f88;
+  --line: #c6d6d3;
+  --line-soft: #dae6e3;
+
+  // Шапка и акцент действий (петроль)
+  --bar: #0f2a33;
+  --bar-ink: #e6f0f1;
+  --brand: #0e4a5a;
+  --brand-hover: #0a3944;
+  --brand-ink: #ffffff;
+  --brand-soft: #d6e8eb;
+
+  // Статусы: всегда вместе со знаком и подписью (a11y)
+  --st-ok: #1673c2;
+  --st-limited: #b7791f;
+  --st-none: #b9421a;
+  --st-queue: #6b4fa3;
+  --st-schedule: #6b4fa3;
+  --st-stale: #7c8c92;
+
+  // Карта-мнемосхема
+  --map-land: #e3ece9;
+  --map-grid: #d1deda;
+  --map-water: #b9d6e8;
+  --map-road: #f6faf9;
+
+  --shadow-1: none;
+  --shadow-float: 0 1px 2px rgb(15 42 51 / 0.12), 0 10px 28px -12px rgb(15 42 51 / 0.35);
+  --focus-ring: 0 0 0 3px color-mix(in srgb, var(--brand) 40%, transparent);
+
+  // Радиусы по иерархии: контролы мельче, панели крупнее
+  --r-lg: 10px;
+  --r-md: 6px;
+  --r-sm: 4px;
+  --gap: 16px;
+  --pad: 16px;
+  --control-h: 40px;
+
+  --header-h: 56px;
+  --sidebar-w: 224px;
+}
+
+// ——— Тёмная тема ———
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --bg: #0c181c;
+  --surface: #132227;
+  --surface-2: #1a2d33;
+  --surface-3: #233a41;
+  --glass: rgb(19 34 39 / 0.92);
+  --ink: #e4eef0;
+  --ink-2: #a9bfc5;
+  --ink-3: #7c969d;
+  --line: #2b444b;
+  --line-soft: #213840;
+  --bar: #091316;
+  --bar-ink: #e4eef0;
+  --brand: #6fc3d4;
+  --brand-hover: #94d4e1;
+  --brand-ink: #062229;
+  --brand-soft: #173a44;
+  --st-ok: #4da3ea;
+  --st-limited: #d9a441;
+  --st-none: #e9784a;
+  --st-queue: #a68be0;
+  --st-schedule: #a68be0;
+  --st-stale: #7c969d;
+  --map-land: #112126;
+  --map-grid: #1a2f35;
+  --map-water: #1f4a63;
+  --map-road: #1d3238;
+  --shadow-float: 0 1px 2px rgb(0 0 0 / 0.4), 0 14px 32px -14px rgb(0 0 0 / 0.75);
+}
+:root[data-theme='light'] { color-scheme: light; }
+
+// ——— Акценты ———
+:root[data-accent='iris'] { --brand: #3f3d9e; --brand-hover: #302f80; --brand-soft: #e0dff5; --bar: #1d1b4d; }
+:root[data-accent='iris'][data-theme='dark'] { --brand: #a9a7f2; --brand-hover: #c2c0f6; --brand-ink: #14123a; --brand-soft: #2a2860; --bar: #0f0e2a; }
+:root[data-accent='amber'] { --brand: #8a4b08; --brand-hover: #6e3b05; --brand-soft: #f6e6cf; --bar: #3a2208; }
+:root[data-accent='amber'][data-theme='dark'] { --brand: #f0b35f; --brand-hover: #f5c887; --brand-ink: #2e1a04; --brand-soft: #46300f; --bar: #1c1204; }
+
+// ——— Скругления ———
+:root[data-radius='sharp'] { --r-lg: 3px; --r-md: 2px; --r-sm: 1px; }
+:root[data-radius='round'] { --r-lg: 22px; --r-md: 14px; --r-sm: 8px; }
+
+// ——— Плотность ———
+:root[data-density='compact'] { --gap: 10px; --pad: 10px; --control-h: 34px; }
+
+// ——— Цвет статуса передаётся через --tone ———
+.tone-ok { --tone: var(--st-ok); }
+.tone-limited { --tone: var(--st-limited); }
+.tone-none { --tone: var(--st-none); }
+.tone-queue { --tone: var(--st-queue); }
+.tone-schedule { --tone: var(--st-schedule); }
+.tone-stale { --tone: var(--st-stale); }

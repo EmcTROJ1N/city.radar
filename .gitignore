@@ -1,0 +1,45 @@
+# зависимости и сборка
+node_modules/
+dist/
+.angular/
+*.log
+
+# окружение и секреты
+.env
+.env.*
+deploy/.env
+# шаблон окружения должен попадать в репозиторий
+!deploy/.env.example
+*.pem
+# секреты production-развёртывания (deploy/secrets: мастер-ключи, JWT)
+/deploy/secrets/
+
+# установленные навыки агента и локальные настройки редактора
+.agents/
+.claude/
+.vscode/
+.idea/
+*.iml
+
+# внутренние документы и локальные заметки не публикуются
+/TZ.md
+/mockup/
+/docs/superpowers/
+/docs/acceptance-backend.md
+
+# ОС
+.DS_Store
+
+# .NET
+bin/
+obj/
+*.user
+.vs/
+TestResults/
+*.tsbuildinfo
+
+# тестовые артефакты
+coverage/
+
+# локальная сверка с матрицей приёмки
+/backend/tests/acceptance-check.py

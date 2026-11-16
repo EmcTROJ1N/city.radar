@@ -1,0 +1,23 @@
+# Override только для ротации мастер-ключа шифрования секретов.
+#
+#   docker compose -f docker-compose.prod.yml -f docker-compose.rotate.yml up -d api ingestion-worker
+#
+# Добавляет api и worker предыдущий ключ (MAYAK_MASTER_KEY_FILE_PREV) и секрет с его файлом.
+# Версия текущего ключа задаётся в .env (MAYAK_MASTER_KEY_VERSION) и остаётся в базовом compose —
+# после ротации этот override больше не нужен.
+services:
+  api:
+    environment:
+      MAYAK_MASTER_KEY_FILE_PREV: /run/secrets/mayak_master_key_prev
+    secrets:
+      - mayak_master_key_prev
+
+  ingestion-worker:
+    environment:
+      MAYAK_MASTER_KEY_FILE_PREV: /run/secrets/mayak_master_key_prev
+    secrets:
+      - mayak_master_key_prev
+
+secrets:
+  mayak_master_key_prev:
+    file: ${MAYAK_MASTER_KEY_PREV_PATH:-./secrets/mayak_master_key_prev}

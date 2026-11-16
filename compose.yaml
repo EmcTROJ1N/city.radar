@@ -1,0 +1,140 @@
+# Локальный стек «одной командой»: PostGIS, Redis, Api, фронтенд на nginx и (по профилю) Worker.
+#
+#   docker compose up -d --build     # весь проект → http://localhost:4200
+#   docker compose down              # остановить, данные БД остаются в томе pgdata
+#   docker compose down -v           # остановить и удалить данные БД и dev-секреты
+#
+# Всё работает в ASPNETCORE_ENVIRONMENT=Development: Api сам применяет миграции при старте,
+# включает dev-сиды и dev-логин. Мастер-ключ шифрования и ключ подписи JWT генерируются один раз
+# в томе dev-secrets и общие для Api и Worker — секреты источников переживают перезапуск.
+#
+# Production-развёртывание (TLS, внешние секреты, бэкапы) — deploy/docker-compose.prod.yml.
+name: fmd-water
+
+x-app-environment: &app-environment
+  ASPNETCORE_ENVIRONMENT: Development
+  DOTNET_ENVIRONMENT: Development
+  ConnectionStrings__Mayak: "Host=postgres;Port=5432;Database=${POSTGRES_DB:-mayak};Username=${POSTGRES_USER:-mayak};Password=${POSTGRES_PASSWORD:-mayak_dev}"
+  ConnectionStrings__Redis: "redis:6379"
+  # entrypoint читает JWT-ключ из файла в Jwt__SigningKey; мастер-ключ приложение читает само.
+  JWT_SIGNING_KEY_FILE: /run/secrets/jwt_signing_key
+  MAYAK_MASTER_KEY_FILE: /run/secrets/mayak_master_key
+
+services:
+  # Одноразовый шаг: создаёт dev-секреты в томе, если их ещё нет. Идемпотентен при повторном `up`.
+  dev-secrets:
+    image: alpine:3.20
+    command:
+      - sh
+      - -c
+      - |
+        set -eu
+        mkdir -p /secrets
+        if [ ! -s /secrets/mayak_master_key ]; then
+          head -c 32 /dev/urandom | base64 | tr -d '\n' > /secrets/mayak_master_key
+        fi
+        if [ ! -s /secrets/jwt_signing_key ]; then
+          head -c 48 /dev/urandom | base64 | tr -d '\n' > /secrets/jwt_signing_key
+        fi
+        chmod 0444 /secrets/mayak_master_key /secrets/jwt_signing_key
+        echo "dev-секреты готовы"
+    volumes:
+      - dev-secrets:/secrets
+    restart: "no"
+
+  postgres:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-mayak}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mayak_dev}
+      POSTGRES_DB: ${POSTGRES_DB:-mayak}
+    ports:
+      # Только loopback: БД не должна быть видна другим машинам в сети.
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 15s
+    shm_size: 256mb
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    # Кэш карты и rate limit: персистентность не нужна.
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
+    ports:
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep -q PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+    restart: unless-stopped
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: src/Host/Api.Host/Dockerfile
+    environment:
+      <<: *app-environment
+      Jwt__Issuer: ${JWT_ISSUER:-mayak}
+      Jwt__Audience: ${JWT_AUDIENCE:-mayak}
+      Jwt__AccessTokenMinutes: ${JWT_ACCESS_TOKEN_MINUTES:-15}
+      Jwt__RefreshTokenDays: ${JWT_REFRESH_TOKEN_DAYS:-30}
+      DevAuth__Password: ${DEV_AUTH_PASSWORD:-mayak-dev}
+    volumes:
+      - dev-secrets:/run/secrets:ro
+    ports:
+      # Порт совпадает с frontend/proxy.conf.json — `ng serve` локально работает без правок.
+      - "127.0.0.1:${API_PORT:-5178}:8080"
+    depends_on:
+      dev-secrets:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    init: true
+    restart: unless-stopped
+
+  # Сбор и разбор источников. Нужны настроенные источники/LLM, поэтому по умолчанию выключен:
+  #   docker compose --profile ingestion up -d --build
+  ingestion-worker:
+    profiles: ["ingestion"]
+    build:
+      context: ./backend
+      dockerfile: src/Host/IngestionWorker.Host/Dockerfile
+    environment:
+      <<: *app-environment
+      Worker__ConfigPollSeconds: ${WORKER_CONFIG_POLL_SECONDS:-10}
+    volumes:
+      - dev-secrets:/run/secrets:ro
+    depends_on:
+      dev-secrets:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    init: true
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "${FRONTEND_PORT:-4200}:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  dev-secrets:

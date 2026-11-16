@@ -1,0 +1,55 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="Shouldly" />
+    <PackageReference Include="NetArchTest.Rules" />
+  </ItemGroup>
+
+  <!--
+    Ссылки на все src-проекты нужны, чтобы их сборки попадали в output и загружались
+    через Assembly.Load: NetArchTest анализирует именно загруженную сборку.
+  -->
+  <ItemGroup Label="Modules">
+    <ProjectReference Include="..\..\src\Modules\IdentityAccess\IdentityAccess.Contracts\IdentityAccess.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Modules\IdentityAccess\IdentityAccess.Core\IdentityAccess.Core.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Catalog\Catalog.Contracts\Catalog.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Catalog\Catalog.Core\Catalog.Core.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Observations\Observations.Contracts\Observations.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Observations\Observations.Domain\Observations.Domain.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Observations\Observations.Application\Observations.Application.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Observations\Observations.Infrastructure\Observations.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Moderation\Moderation.Contracts\Moderation.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Moderation\Moderation.Core\Moderation.Core.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Sources\Sources.Contracts\Sources.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Sources\Sources.Core\Sources.Core.csproj" />
+    <ProjectReference Include="..\..\src\Modules\MapReadModel\MapReadModel.Contracts\MapReadModel.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Modules\MapReadModel\MapReadModel.Core\MapReadModel.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup Label="Ingestion">
+    <ProjectReference Include="..\..\src\Ingestion\Ingestion.Abstractions\Ingestion.Abstractions.csproj" />
+    <ProjectReference Include="..\..\src\Ingestion\Ingestion.Pipeline\Ingestion.Pipeline.csproj" />
+    <ProjectReference Include="..\..\src\Ingestion\Ingestion.Adapters.TelegramBotApi\Ingestion.Adapters.TelegramBotApi.csproj" />
+    <ProjectReference Include="..\..\src\Ingestion\Ingestion.Adapters.TelegramMtProto\Ingestion.Adapters.TelegramMtProto.csproj" />
+    <ProjectReference Include="..\..\src\Ingestion\Ingestion.Llm.OpenAi\Ingestion.Llm.OpenAi.csproj" />
+  </ItemGroup>
+
+  <ItemGroup Label="BuildingBlocks">
+    <ProjectReference Include="..\..\src\BuildingBlocks\BuildingBlocks.Persistence\BuildingBlocks.Persistence.csproj" />
+    <ProjectReference Include="..\..\src\BuildingBlocks\BuildingBlocks.Messaging\BuildingBlocks.Messaging.csproj" />
+    <ProjectReference Include="..\..\src\BuildingBlocks\BuildingBlocks.Security\BuildingBlocks.Security.csproj" />
+    <ProjectReference Include="..\..\src\BuildingBlocks\BuildingBlocks.Web\BuildingBlocks.Web.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+</Project>

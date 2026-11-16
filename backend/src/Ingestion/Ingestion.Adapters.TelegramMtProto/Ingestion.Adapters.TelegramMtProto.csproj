@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <PackageReference Include="WTelegramClient" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Ingestion.Abstractions\Ingestion.Abstractions.csproj" />
+  </ItemGroup>
+
+</Project>

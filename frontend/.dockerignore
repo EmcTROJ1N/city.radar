@@ -1,0 +1,8 @@
+# Контекст сборки — frontend/ (см. compose.yaml и frontend/Dockerfile).
+node_modules/
+dist/
+.angular/
+.agents/
+.claude/
+.vscode/
+*.log

@@ -1,0 +1,54 @@
+<Solution>
+  <Folder Name="/Host/">
+    <Project Path="src/Host/Api.Host/Api.Host.csproj" />
+    <Project Path="src/Host/IngestionWorker.Host/IngestionWorker.Host.csproj" />
+  </Folder>
+  <Folder Name="/Modules/IdentityAccess/">
+    <Project Path="src/Modules/IdentityAccess/IdentityAccess.Contracts/IdentityAccess.Contracts.csproj" />
+    <Project Path="src/Modules/IdentityAccess/IdentityAccess.Core/IdentityAccess.Core.csproj" />
+  </Folder>
+  <Folder Name="/Modules/Catalog/">
+    <Project Path="src/Modules/Catalog/Catalog.Contracts/Catalog.Contracts.csproj" />
+    <Project Path="src/Modules/Catalog/Catalog.Core/Catalog.Core.csproj" />
+  </Folder>
+  <Folder Name="/Modules/Observations/">
+    <Project Path="src/Modules/Observations/Observations.Contracts/Observations.Contracts.csproj" />
+    <Project Path="src/Modules/Observations/Observations.Domain/Observations.Domain.csproj" />
+    <Project Path="src/Modules/Observations/Observations.Application/Observations.Application.csproj" />
+    <Project Path="src/Modules/Observations/Observations.Infrastructure/Observations.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/Modules/Moderation/">
+    <Project Path="src/Modules/Moderation/Moderation.Contracts/Moderation.Contracts.csproj" />
+    <Project Path="src/Modules/Moderation/Moderation.Core/Moderation.Core.csproj" />
+  </Folder>
+  <Folder Name="/Modules/Sources/">
+    <Project Path="src/Modules/Sources/Sources.Contracts/Sources.Contracts.csproj" />
+    <Project Path="src/Modules/Sources/Sources.Core/Sources.Core.csproj" />
+  </Folder>
+  <Folder Name="/Modules/MapReadModel/">
+    <Project Path="src/Modules/MapReadModel/MapReadModel.Contracts/MapReadModel.Contracts.csproj" />
+    <Project Path="src/Modules/MapReadModel/MapReadModel.Core/MapReadModel.Core.csproj" />
+  </Folder>
+  <Folder Name="/Ingestion/">
+    <Project Path="src/Ingestion/Ingestion.Abstractions/Ingestion.Abstractions.csproj" />
+    <Project Path="src/Ingestion/Ingestion.Pipeline/Ingestion.Pipeline.csproj" />
+    <Project Path="src/Ingestion/Ingestion.Adapters.TelegramBotApi/Ingestion.Adapters.TelegramBotApi.csproj" />
+    <Project Path="src/Ingestion/Ingestion.Adapters.TelegramMtProto/Ingestion.Adapters.TelegramMtProto.csproj" />
+    <Project Path="src/Ingestion/Ingestion.Llm.OpenAi/Ingestion.Llm.OpenAi.csproj" />
+    <Project Path="src/Ingestion/Ingestion.LlmEval.Core/Ingestion.LlmEval.Core.csproj" />
+  </Folder>
+  <Folder Name="/BuildingBlocks/">
+    <Project Path="src/BuildingBlocks/BuildingBlocks.Persistence/BuildingBlocks.Persistence.csproj" />
+    <Project Path="src/BuildingBlocks/BuildingBlocks.Messaging/BuildingBlocks.Messaging.csproj" />
+    <Project Path="src/BuildingBlocks/BuildingBlocks.Security/BuildingBlocks.Security.csproj" />
+    <Project Path="src/BuildingBlocks/BuildingBlocks.Web/BuildingBlocks.Web.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Architecture.Tests/Architecture.Tests.csproj" />
+    <Project Path="tests/Observations.Domain.Tests/Observations.Domain.Tests.csproj" />
+    <Project Path="tests/Ingestion.Pipeline.Tests/Ingestion.Pipeline.Tests.csproj" />
+    <Project Path="tests/Api.IntegrationTests/Api.IntegrationTests.csproj" />
+    <Project Path="tests/Ingestion.LlmEval/Ingestion.LlmEval.csproj" />
+    <Project Path="tests/contract/token-tool/Contract.TokenTool.csproj" />
+  </Folder>
+</Solution>

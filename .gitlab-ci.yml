@@ -1,0 +1,193 @@
+# CI проекта. Хостинг — GitLab CI: remote репозитория не настроен,
+# поэтому пайплайн описан здесь в формате GitLab CI.
+#
+# Stages: build → test → final. Первые два дают быстрый сигнал, финальный прогон
+# включает Stage=final (SchemaParityTests — сверка миграций с db/schema.sql).
+#
+# Testcontainers (Postgres/Redis) используют Docker-демон раннера:
+#   * по умолчанию job-ы поднимают dind-сервис docker:27-dind и ходят в него по
+#     DOCKER_HOST=tcp://docker:2375 (TLS выключен только внутри job-сети);
+#   * на shell-раннере с проброшенным сокетом задайте DOCKER_HOST=unix:///var/run/docker.sock
+#     и не поднимайте dind (либо оставьте сервис — сокет имеет приоритет через переменную).
+
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_TAG
+
+stages:
+  - build
+  - test
+  - final
+
+variables:
+  # Точная версия SDK зафиксирована в backend/global.json (10.0.300, rollForward latestFeature):
+  # warnings-as-errors и анализаторы чувствительны к версии.
+  DOTNET_NOLOGO: "true"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "true"
+  NUGET_PACKAGES: "$CI_PROJECT_DIR/.nuget/packages"
+  NODE_IMAGE: "node:22"
+
+# Кэш NuGet общий для всех .NET-job-ов; ключ учитывает центральные версии пакетов.
+.nuget-cache: &nuget-cache
+  key:
+    files:
+      - backend/Directory.Packages.props
+  paths:
+    - .nuget/packages
+
+# Заготовка для job-ов, которым нужен Docker (Testcontainers).
+.docker-service: &docker-service
+  services:
+    - name: docker:27-dind
+      command: ["--tls=false"]
+  variables:
+    DOCKER_HOST: "tcp://docker:2375"
+    DOCKER_TLS_CERTDIR: ""
+    # Порты контейнеров опубликованы на dind-хосте, а не в job-контейнере.
+    TESTCONTAINERS_HOST_OVERRIDE: "docker"
+    TESTCONTAINERS_RYUK_DISABLED: "true"
+
+# Проверка доступности Docker-демона одной строкой скрипта (без вложенных массивов).
+.docker-check: &docker-check |
+  if [ -z "$DOCKER_HOST" ]; then
+    echo "DOCKER_HOST не задан — Testcontainers будет искать локальный сокет"
+    exit 0
+  fi
+  case "$DOCKER_HOST" in
+    unix://*)
+      test -S "${DOCKER_HOST#unix://}" || { echo "Нет Docker-сокета: $DOCKER_HOST"; exit 1; }
+      echo "Docker-сокет доступен: $DOCKER_HOST"
+      ;;
+    tcp://*)
+      hostport="${DOCKER_HOST#tcp://}"
+      host="${hostport%%:*}"
+      port="${hostport##*:}"
+      timeout 60 bash -c "until (echo > /dev/tcp/$host/$port) 2>/dev/null; do sleep 1; done" \
+        || { echo "Docker-демон недоступен: $DOCKER_HOST"; exit 1; }
+      echo "Docker-демон доступен: $DOCKER_HOST"
+      ;;
+    *)
+      echo "Неизвестный DOCKER_HOST: $DOCKER_HOST"
+      exit 1
+      ;;
+  esac
+
+build:
+  stage: build
+  image: mcr.microsoft.com/dotnet/sdk:10.0
+  interruptible: true
+  cache: *nuget-cache
+  before_script:
+    - cd backend
+  script:
+    - dotnet build -warnaserror
+
+test:
+  stage: test
+  image: mcr.microsoft.com/dotnet/sdk:10.0
+  needs: ["build"]
+  interruptible: true
+  cache: *nuget-cache
+  <<: *docker-service
+  before_script:
+    - cd backend
+    - *docker-check
+  script:
+    - dotnet test --filter "Stage!=final" --logger "trx;LogFileName=test-results.trx"
+  artifacts:
+    when: always
+    expire_in: 1 week
+    paths:
+      - backend/**/TestResults/*.trx
+
+architecture:
+  stage: test
+  image: mcr.microsoft.com/dotnet/sdk:10.0
+  needs: ["build"]
+  interruptible: true
+  cache: *nuget-cache
+  before_script:
+    - cd backend
+  script:
+    - dotnet test tests/Architecture.Tests
+
+api-lint:
+  stage: test
+  image: $NODE_IMAGE
+  needs: []
+  interruptible: true
+  cache:
+    key:
+      files:
+        - api/package-lock.json
+    paths:
+      - api/node_modules
+      - .npm
+  variables:
+    npm_config_cache: "$CI_PROJECT_DIR/.npm"
+  before_script:
+    - cd api
+    - npm ci
+  script:
+    - npm run lint
+
+types-check:
+  stage: test
+  image: $NODE_IMAGE
+  needs: []
+  interruptible: true
+  cache:
+    key:
+      files:
+        - api/package-lock.json
+        - frontend/package-lock.json
+    paths:
+      - api/node_modules
+      - frontend/node_modules
+      - .npm
+  variables:
+    npm_config_cache: "$CI_PROJECT_DIR/.npm"
+  script:
+    - npm ci --prefix api
+    - npm ci --prefix frontend
+    - npm run types --prefix frontend
+    - git diff --exit-code -- frontend/src/shared/api/schema.d.ts
+
+schemathesis:
+  stage: test
+  image: mcr.microsoft.com/dotnet/sdk:10.0
+  needs: ["build"]
+  interruptible: true
+  script:
+    # Скрипт поднимает Api на тестовой БД с dev-seed и запускает schemathesis.
+    # Пока его нет, job остаётся зелёной заглушкой и сам включится, когда файл появится.
+    - |
+      if [ -x tests/contract/run-schemathesis.sh ]; then
+        apt-get update
+        apt-get install -y --no-install-recommends python3 python3-venv
+        tests/contract/run-schemathesis.sh
+      else
+        echo "TODO: tests/contract/run-schemathesis.sh отсутствует — проверка пропущена."
+      fi
+
+final:
+  stage: final
+  image: mcr.microsoft.com/dotnet/sdk:10.0
+  needs: ["test"]
+  interruptible: true
+  cache: *nuget-cache
+  <<: *docker-service
+  before_script:
+    - cd backend
+    - *docker-check
+  # Без фильтра: Stage=final (SchemaParityTests — сверка миграций с db/schema.sql) тоже идёт.
+  script:
+    - dotnet test --logger "trx;LogFileName=test-results.trx"
+  artifacts:
+    when: always
+    expire_in: 1 week
+    paths:
+      - backend/**/TestResults/*.trx
