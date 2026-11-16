@@ -38,6 +38,18 @@ insert into source_statuses (source_id, code, name, description, color, icon, so
   ('00000000-0000-0000-0000-0000000000e1', 'ok', 'Вода есть', 'Подача воды идёт или возобновилась', 'ok', 'drop', 1),
   ('00000000-0000-0000-0000-0000000000e1', 'none', 'Воды нет', 'Подача воды прекращена', 'none', 'cross', 2);
 
+-- Системный источник «Сайт» категории «Вода»: доступен фиксациям неявно.
+insert into sources (id, name, source_type, category_id, settings, user_prompt, link_by_text) values
+  ('00000000-0000-0000-0000-0000000000e2', 'Сайт · Вода', 'site',
+   '00000000-0000-0000-0000-0000000000c1', '{}', '', false);
+insert into source_policies (source_id, timeout) values
+  ('00000000-0000-0000-0000-0000000000e2', interval '3 hours');
+insert into source_statuses
+  (source_id, status_definition_id, code, name, description, color, icon, sort_order)
+select '00000000-0000-0000-0000-0000000000e2', sd.id, sd.code, sd.name, '', sd.color, sd.icon, sd.severity
+from status_definitions sd
+where sd.category_id = '00000000-0000-0000-0000-0000000000c1';
+
 insert into map_objects (id, object_type_id, name, coverage_kind, geometry) values
   ('00000000-0000-0000-0000-0000000000f1', '00000000-0000-0000-0000-0000000000b1', 'Калининский район', 'polygon',
    'POLYGON((37.78 48.00, 37.86 48.00, 37.86 48.05, 37.78 48.05, 37.78 48.00))'::geography);

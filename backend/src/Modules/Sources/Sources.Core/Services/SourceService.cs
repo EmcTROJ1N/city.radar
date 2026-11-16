@@ -32,6 +32,7 @@ internal sealed class SourceService(
     private const string SourceTypeField = "sourceType";
     private const string TelegramSourceType = "telegram_chat";
     private const string TelegramBotMode = "bot";
+    private const string SiteSourceType = "site";
 
     /// <summary>Курсорная страница источников с фильтрами контракта.</summary>
     public async Task<IResult> ListAsync(
@@ -121,6 +122,14 @@ internal sealed class SourceService(
     {
         ArgumentNullException.ThrowIfNull(input);
 
+        if (string.Equals(input.SourceType, SiteSourceType, StringComparison.Ordinal))
+        {
+            return ProblemResponses.Validation(
+                new ValidationError(
+                    SourceTypeField,
+                    "«Сайт» создаётся только вместе с категорией"));
+        }
+
         if (!await SourceTypeExistsAsync(input.SourceType, ct))
         {
             return ProblemResponses.Validation(
@@ -180,6 +189,19 @@ internal sealed class SourceService(
         if (source is null)
         {
             return ProblemResponses.NotFound($"Источник {id} не существует");
+        }
+
+        if (string.Equals(source.SourceType, SiteSourceType, StringComparison.Ordinal))
+        {
+            return await UpdateSiteAsync(source, input, ct);
+        }
+
+        if (string.Equals(input.SourceType, SiteSourceType, StringComparison.Ordinal))
+        {
+            return ProblemResponses.Validation(
+                new ValidationError(
+                    SourceTypeField,
+                    "«Сайт» создаётся только вместе с категорией"));
         }
 
         if (!await SourceTypeExistsAsync(input.SourceType, ct))
@@ -243,6 +265,83 @@ internal sealed class SourceService(
     }
 
     /// <summary>
+    /// Изменение системного «Сайта»: разрешены только название и таймаут. Поля чата, промпта,
+    /// префильтра, порога и режима «по тексту» у него отсутствуют — попытка задать их
+    /// отклоняется 422. Включение и выключение — отдельными методами.
+    /// </summary>
+    private async Task<IResult> UpdateSiteAsync(Source source, SourceInput input, CancellationToken ct)
+    {
+        var errors = new List<ValidationError>();
+
+        if (!string.Equals(input.SourceType, SiteSourceType, StringComparison.Ordinal))
+        {
+            errors.Add(new ValidationError(SourceTypeField, "Тип системного источника изменить нельзя"));
+        }
+
+        if (!string.IsNullOrWhiteSpace(input.ChatId))
+        {
+            errors.Add(new ValidationError("chatId", "У «Сайта» нет чата"));
+        }
+
+        if (!string.IsNullOrWhiteSpace(input.UserPrompt))
+        {
+            errors.Add(new ValidationError("userPrompt", "У «Сайта» нет промпта"));
+        }
+
+        if (input.LinkByText)
+        {
+            errors.Add(new ValidationError("linkByText", "У «Сайта» нет режима «по тексту»"));
+        }
+
+        if (input.ConfidenceThreshold is not null)
+        {
+            errors.Add(new ValidationError("confidenceThreshold", "У «Сайта» нет порога уверенности"));
+        }
+
+        if (input.Prefilter is not null)
+        {
+            errors.Add(new ValidationError("prefilter", "У «Сайта» нет префильтра"));
+        }
+
+        if (errors.Count > 0)
+        {
+            return ProblemResponses.Validation([.. errors]);
+        }
+
+        var policy = source.Policy;
+        if (policy is null)
+        {
+            policy = new SourcePolicy { SourceId = source.Id };
+            source.Policy = policy;
+            db.Add(policy);
+        }
+
+        var before = new Dictionary<string, object?>(StringComparer.Ordinal);
+        var after = new Dictionary<string, object?>(StringComparer.Ordinal);
+
+        Track(before, after, "name", source.Name, input.Name);
+        Track(before, after, "timeoutSeconds", (int)policy.Timeout.TotalSeconds, input.TimeoutSeconds);
+
+        source.Name = input.Name;
+        policy.Timeout = TimeSpan.FromSeconds(input.TimeoutSeconds);
+
+        if (before.Count > 0)
+        {
+            await audit.WriteAsync("source.update", EntityType, source.Id.ToString(), before, after, ct: ct);
+        }
+
+        var conflict = await SaveAsync(ct);
+        if (conflict is not null)
+        {
+            return conflict;
+        }
+
+        var statuses = await ReadStatusesAsync([source.Id], ct);
+
+        return Results.Ok(ToResponse(source, policy, statuses.GetValueOrDefault(source.Id) ?? []));
+    }
+
+    /// <summary>
     /// Удаление источника. Источник с наблюдениями удалять нельзя (409): его отключают через
     /// <c>/sources/{id}/disable</c>. Привязки <c>map_object_sources</c> снимаются каскадом FK.
     /// </summary>
@@ -254,6 +353,12 @@ internal sealed class SourceService(
         if (source is null)
         {
             return ProblemResponses.NotFound($"Источник {id} не существует");
+        }
+
+        if (string.Equals(source.SourceType, SiteSourceType, StringComparison.Ordinal))
+        {
+            return ProblemResponses.Conflict(
+                "«Сайт» — системный источник: он удаляется только вместе с категорией");
         }
 
         if (await deletionGuard.HasObservationsAsync(id, ct))
@@ -486,6 +591,7 @@ internal sealed class SourceService(
             source.Id,
             source.Name,
             source.SourceType,
+            source.CategoryId,
             ReadChatId(source.Settings),
             policy is null ? 0 : (int)policy.Timeout.TotalSeconds,
             policy?.ConfidenceThreshold,
@@ -502,6 +608,7 @@ internal sealed class SourceService(
         new(
             source.Name,
             source.SourceType,
+            source.CategoryId,
             ReadChatId(source.Settings),
             source.Policy is null ? 0 : (int)source.Policy.Timeout.TotalSeconds,
             source.Policy?.ConfidenceThreshold,
@@ -556,6 +663,7 @@ internal sealed record SourceResponse(
     Guid Id,
     string Name,
     string SourceType,
+    Guid? CategoryId,
     string ChatId,
     int TimeoutSeconds,
     float? ConfidenceThreshold,
@@ -572,6 +680,7 @@ internal sealed record SourceResponse(
 internal sealed record SourceAuditSnapshot(
     string Name,
     string SourceType,
+    Guid? CategoryId,
     string ChatId,
     int TimeoutSeconds,
     float? ConfidenceThreshold,

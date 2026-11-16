@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Sources.Contracts\Sources.Contracts.csproj" />
+    <ProjectReference Include="..\..\Catalog\Catalog.Contracts\Catalog.Contracts.csproj" />
     <ProjectReference Include="..\..\IdentityAccess\IdentityAccess.Contracts\IdentityAccess.Contracts.csproj" />
     <ProjectReference Include="..\..\..\BuildingBlocks\BuildingBlocks.Persistence\BuildingBlocks.Persistence.csproj" />
     <ProjectReference Include="..\..\..\BuildingBlocks\BuildingBlocks.Messaging\BuildingBlocks.Messaging.csproj" />

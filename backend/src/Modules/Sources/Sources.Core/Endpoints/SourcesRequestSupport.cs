@@ -70,14 +70,17 @@ internal static partial class SourcesRequestSupport
 
         var name = ReadName(root, errors);
         var sourceType = ReadRequiredString(root, "sourceType", errors);
-        var chatId = ReadRequiredString(root, "chatId", errors);
+        var isSite = string.Equals(sourceType, "site", StringComparison.Ordinal);
+        var chatId = isSite
+            ? ReadOptionalChatId(root, errors)
+            : ReadRequiredString(root, "chatId", errors);
         var timeoutSeconds = ReadTimeoutSeconds(root, errors);
         var confidenceThreshold = ReadConfidenceThreshold(root, errors);
         var prefilter = ReadPrefilter(root, errors);
         var userPrompt = ReadPrompt(root, errors);
-        var linkByText = ReadOptionalBool(root, "linkByText", errors) ?? true;
+        var linkByText = ReadOptionalBool(root, "linkByText", errors) ?? !isSite;
 
-        if (sourceType is not null && chatId is not null && !IsValidChatId(sourceType, chatId))
+        if (!isSite && sourceType is not null && chatId is not null && !IsValidChatId(sourceType, chatId))
         {
             errors.Add(new ValidationError(
                 "chatId",
@@ -317,6 +320,27 @@ internal static partial class SourcesRequestSupport
         }
 
         return text;
+    }
+
+    /// <summary>
+    /// Идентификатор чата у системного «Сайта»: чата нет, поэтому поле необязательно.
+    /// Отсутствие или <c>null</c> — пустая строка.
+    /// </summary>
+    private static string? ReadOptionalChatId(JsonElement root, List<ValidationError> errors)
+    {
+        if (!root.TryGetProperty("chatId", out var value) || value.ValueKind == JsonValueKind.Null)
+        {
+            return string.Empty;
+        }
+
+        if (value.ValueKind != JsonValueKind.String)
+        {
+            errors.Add(new ValidationError("chatId", "Ожидается строка"));
+
+            return null;
+        }
+
+        return value.GetString() ?? string.Empty;
     }
 
     private static bool? ReadOptionalBool(

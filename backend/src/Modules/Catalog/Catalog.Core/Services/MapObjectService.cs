@@ -34,6 +34,9 @@ internal sealed class MapObjectService(
     private const string EntityType = "map_object";
     private const string GeometryKindPoint = "point";
     private const string GeometryKindPolygon = "polygon";
+    private const string SiteSourceType = "site";
+    private const string SiteSourceNotLinkableMessage =
+        "«Сайт» доступен фиксациям неявно и не привязывается к ним";
 
     /// <summary>Редакторский список фиксаций: фильтры контракта и курсорная страница.</summary>
     public async Task<IResult> ListAsync(
@@ -319,6 +322,13 @@ internal sealed class MapObjectService(
             return ProblemResponses.NotFound($"Источник {sourceId} не существует");
         }
 
+        var policy = await sourceDirectory.GetPolicyAsync(sourceId, ct);
+        if (string.Equals(policy?.SourceType, SiteSourceType, StringComparison.Ordinal))
+        {
+            return ProblemResponses.Validation(
+                new ValidationError("sourceId", SiteSourceNotLinkableMessage));
+        }
+
         var linked = await db.Set<MapObjectSource>()
             .FirstOrDefaultAsync(
                 link => link.MapObjectId == id && link.SourceId == sourceId,
@@ -407,9 +417,14 @@ internal sealed class MapObjectService(
 
         foreach (var sourceId in input.SourceIds)
         {
-            if (!await sourceDirectory.ExistsAsync(sourceId, ct))
+            var policy = await sourceDirectory.GetPolicyAsync(sourceId, ct);
+            if (policy is null)
             {
                 errors.Add(new ValidationError("sourceIds", $"Источник {sourceId} не существует"));
+            }
+            else if (string.Equals(policy.SourceType, SiteSourceType, StringComparison.Ordinal))
+            {
+                errors.Add(new ValidationError("sourceIds", SiteSourceNotLinkableMessage));
             }
         }
 

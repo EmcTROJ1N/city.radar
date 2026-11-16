@@ -150,7 +150,34 @@ public sealed class CreateObservationTests(PostgresFixture fixture) : IAsyncLife
     }
 
     [Fact]
-    public async Task Object_without_sources_cannot_be_marked_409()
+    public async Task Object_without_sources_can_be_marked_via_site_source()
+    {
+        var ct = CancellationToken.None;
+        var moderatorToken = await _api.ModeratorTokenAsync(ct);
+        var token = await _api.UserTokenAsync(ct);
+        var setup = await CreateSiteSetupAsync(moderatorToken, ct);
+
+        using (var response = await PostObservationAsync(token, setup, ct: ct))
+        {
+            response.StatusCode.ShouldBe(HttpStatusCode.Created);
+
+            var json = await CatalogApi.ReadJsonAsync(response, ct);
+            json.GetProperty("observation").GetProperty("status").GetProperty("id").GetGuid()
+                .ShouldBe(setup.StatusA);
+        }
+
+        (await _api.CountAsync(
+            $"""
+             select count(*) from observations
+             where map_object_id = '{setup.ObjectId}'
+               and source_id = '{setup.SourceId}'
+               and source_type = 'manual'
+             """,
+            ct)).ShouldBe(1L);
+    }
+
+    [Fact]
+    public async Task Object_without_type_cannot_be_marked_409()
     {
         var ct = CancellationToken.None;
         var token = await _api.ModeratorTokenAsync(ct);
@@ -165,8 +192,53 @@ public sealed class CreateObservationTests(PostgresFixture fixture) : IAsyncLife
         response.StatusCode.ShouldBe(HttpStatusCode.Conflict);
         response.Content.Headers.ContentType?.MediaType.ShouldBe("application/problem+json");
         (await CatalogApi.ReadJsonAsync(response, ct)).GetProperty("detail").GetString()
-            .ShouldNotBeNull().ShouldContain("источник");
+            .ShouldNotBeNull().ShouldContain("тип");
         (await CountObservationsAsync(objectId, ct)).ShouldBe(0L);
+    }
+
+    [Fact]
+    public async Task Site_source_of_other_category_is_rejected_422()
+    {
+        var ct = CancellationToken.None;
+        var token = await _api.ModeratorTokenAsync(ct);
+        var setup = await CreateSiteSetupAsync(token, ct);
+        var other = await CreateSiteSetupAsync(token, ct);
+
+        using var response = await PostObservationAsync(
+            token,
+            setup,
+            sourceId: other.SourceId,
+            sourceStatusId: other.StatusA,
+            ct: ct);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.UnprocessableEntity);
+        (await CatalogApi.ReadJsonAsync(response, ct)).GetProperty("errors").EnumerateArray()
+            .ShouldContain(error => error.GetProperty("field").GetString() == "sourceId");
+        (await CountObservationsAsync(setup.ObjectId, ct)).ShouldBe(0L);
+    }
+
+    [Fact]
+    public async Task Disabled_site_source_is_rejected_422()
+    {
+        var ct = CancellationToken.None;
+        var token = await _api.ModeratorTokenAsync(ct);
+        var setup = await CreateSiteSetupAsync(token, ct);
+
+        using (var disable = await _api.SendAsync(
+            HttpMethod.Post,
+            $"{SourcesPath}/{setup.SourceId}/disable",
+            token,
+            json: null,
+            ct))
+        {
+            disable.StatusCode.ShouldBe(HttpStatusCode.OK);
+        }
+
+        using var response = await PostObservationAsync(token, setup, ct: ct);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.UnprocessableEntity);
+        (await CatalogApi.ReadJsonAsync(response, ct)).GetProperty("errors").EnumerateArray()
+            .ShouldContain(error => error.GetProperty("field").GetString() == "sourceId");
     }
 
     [Fact]
@@ -725,6 +797,128 @@ public sealed class CreateObservationTests(PostgresFixture fixture) : IAsyncLife
             isActive: objectActive);
 
         return new Setup(source.SourceId, source.StatusA, source.StatusB, objectId);
+    }
+
+    /// <summary>
+    /// Фиксация категории без привязанных источников: «Сайт» доступен ей неявно.
+    /// Категория создаётся через API, статусы справочника заводятся SQL-ом, затем категория
+    /// сохраняется повторно — провижионер копирует статусы в «Сайт».
+    /// </summary>
+    private async Task<Setup> CreateSiteSetupAsync(string token, CancellationToken ct)
+    {
+        var suffix = CatalogApi.NewSuffix();
+        var code = $"sitecat_{suffix}";
+        var name = $"Категория сайта {suffix}";
+
+        Guid categoryId;
+        using (var response = await _api.SendAsync(
+            HttpMethod.Post,
+            "/api/v1/catalog/categories",
+            token,
+            $$"""{"code":"{{code}}","name":"{{name}}"}""",
+            ct))
+        {
+            response.StatusCode.ShouldBe(HttpStatusCode.Created);
+            categoryId = (await CatalogApi.ReadJsonAsync(response, ct)).GetProperty("id").GetGuid();
+        }
+
+        var okCode = $"site_ok_{suffix}";
+        var noneCode = $"site_none_{suffix}";
+
+        await _api.ExecuteAsync(
+            $"""
+             insert into status_definitions
+               (category_id, code, name, color, icon, severity, is_positive)
+             values
+               ('{categoryId}', '{okCode}', 'Вода есть {suffix}', 'ok', 'drop', 0, true),
+               ('{categoryId}', '{noneCode}', 'Воды нет {suffix}', 'none', 'cross', 3, false)
+             """,
+            ct);
+
+        using (var response = await _api.SendAsync(
+            HttpMethod.Put,
+            $"/api/v1/catalog/categories/{categoryId}",
+            token,
+            $$"""{"code":"{{code}}","name":"{{name}}"}""",
+            ct))
+        {
+            response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        }
+
+        Guid objectTypeId;
+        using (var response = await _api.SendAsync(
+            HttpMethod.Post,
+            "/api/v1/catalog/object-types",
+            token,
+            $$"""
+              {"categoryId":"{{categoryId}}","code":"sitetype_{{suffix}}",
+               "name":"Тип сайта {{suffix}}","geometryKind":"point"}
+              """,
+            ct))
+        {
+            response.StatusCode.ShouldBe(HttpStatusCode.Created);
+            objectTypeId = (await CatalogApi.ReadJsonAsync(response, ct)).GetProperty("id").GetGuid();
+        }
+
+        var objectId = await CreateObjectOfTypeAsync(token, objectTypeId, ct);
+        var (sourceId, statusA, statusB) = await ReadSiteSourceAsync(
+            categoryId,
+            okCode,
+            noneCode,
+            ct);
+
+        return new Setup(sourceId, statusA, statusB, objectId);
+    }
+
+    private async Task<Guid> CreateObjectOfTypeAsync(
+        string token,
+        Guid objectTypeId,
+        CancellationToken ct)
+    {
+        var suffix = CatalogApi.NewSuffix();
+
+        using var response = await _api.SendAsync(
+            HttpMethod.Post,
+            ObjectsPath,
+            token,
+            $$"""
+              {"name":"Фиксация сайта {{suffix}}","objectTypeId":"{{objectTypeId}}",
+               "coverageKind":"point","geometry":{"type":"Point","coordinates":[37.80,48.01]},
+               "isActive":true,"sourceIds":[]}
+              """,
+            ct);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.Created);
+
+        return (await CatalogApi.ReadJsonAsync(response, ct)).GetProperty("id").GetGuid();
+    }
+
+    private async Task<(Guid SourceId, Guid StatusA, Guid StatusB)> ReadSiteSourceAsync(
+        Guid categoryId,
+        string okCode,
+        string noneCode,
+        CancellationToken ct)
+    {
+        await using var connection = new NpgsqlConnection(fixture.ConnectionString);
+        await connection.OpenAsync(ct);
+
+        await using var command = new NpgsqlCommand(
+            """
+            select s.id,
+                   (select id from source_statuses where source_id = s.id and code = @ok),
+                   (select id from source_statuses where source_id = s.id and code = @none)
+            from sources s
+            where s.category_id = @category and s.source_type = 'site'
+            """,
+            connection);
+        command.Parameters.Add(new NpgsqlParameter("category", NpgsqlDbType.Uuid) { Value = categoryId });
+        command.Parameters.Add(new NpgsqlParameter("ok", NpgsqlDbType.Text) { Value = okCode });
+        command.Parameters.Add(new NpgsqlParameter("none", NpgsqlDbType.Text) { Value = noneCode });
+
+        await using var reader = await command.ExecuteReaderAsync(ct);
+        await reader.ReadAsync(ct);
+
+        return (reader.GetGuid(0), reader.GetGuid(1), reader.GetGuid(2));
     }
 
     private async Task<SourceSetup> CreateSourceWithStatusesAsync(

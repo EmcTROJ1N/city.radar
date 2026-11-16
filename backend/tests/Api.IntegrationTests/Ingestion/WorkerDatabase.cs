@@ -43,6 +43,8 @@ internal static class WorkerDatabase
               and type in ('ObservationProposed', 'ModerationCaseRequested')
               and payload ? 'sourceId';
             delete from sources where name like 'worker-source-%';
+            delete from sources where name like 'worker-site-%';
+            delete from categories where code like 'worker-site-%';
             delete from map_objects where name like 'worker-object-%';
             """,
             ct);
@@ -92,6 +94,42 @@ internal static class WorkerDatabase
             ("object_name", objectName));
 
         return new TestSource(id, objectId, name, chatId, objectName);
+    }
+
+    /// <summary>
+    /// Создаёт системный «Сайт» категории с политикой и статусом. Воркер не должен читать
+    /// такой источник: у него нет адаптера и сообщений.
+    /// </summary>
+    public static async Task<Guid> CreateSiteSourceAsync(
+        string connectionString,
+        CancellationToken ct = default)
+    {
+        var suffix = Guid.NewGuid().ToString("N")[..10];
+        var categoryId = Guid.NewGuid();
+        var sourceId = Guid.NewGuid();
+        var categoryCode = $"worker-site-{suffix}";
+
+        await ExecuteAsync(
+            connectionString,
+            """
+            insert into categories (id, code, name) values (@category_id, @category_code, @category_name);
+
+            insert into sources (id, name, source_type, category_id, settings, user_prompt, link_by_text, is_enabled)
+            values (@id, @name, 'site', @category_id, '{}', '', false, true);
+
+            insert into source_policies (source_id, timeout) values (@id, interval '3 hours');
+
+            insert into source_statuses (source_id, code, name, description, color, icon, sort_order)
+            values (@id, 'ok', 'Вода есть', 'Подача воды идёт', 'ok', 'drop', 1);
+            """,
+            ct,
+            ("category_id", categoryId),
+            ("category_code", categoryCode),
+            ("category_name", $"Категория воркера {suffix}"),
+            ("id", sourceId),
+            ("name", $"worker-site-{suffix}"));
+
+        return sourceId;
     }
 
     /// <summary>Меняет промпт-фильтр источника.</summary>

@@ -153,11 +153,20 @@ public sealed class ObjectCardQuery(MayakDbContext db, TimeProvider time)
                    s.name,
                    s.source_type,
                    coalesce(extract(epoch from p.timeout)::int, 0)
-            from map_object_sources mos
-            join sources s on s.id = mos.source_id
+            from sources s
             left join source_policies p on p.source_id = s.id
-            where mos.map_object_id = @map_object_id
-            order by s.name, s.id
+            where s.id in (
+                select source_id from map_object_sources where map_object_id = @map_object_id
+                union
+                select site.id
+                from sources site
+                join object_types ot on ot.category_id = site.category_id
+                join map_objects mo on mo.object_type_id = ot.id
+                where mo.id = @map_object_id
+                  and site.source_type = 'site'
+                  and site.is_enabled
+            )
+            order by (s.source_type = 'site') desc, s.name, s.id
             """;
 
         await using var command = await CreateCommandAsync(Sql, ct);
@@ -185,8 +194,17 @@ public sealed class ObjectCardQuery(MayakDbContext db, TimeProvider time)
         const string Sql = """
             select ss.source_id, ss.id, ss.code, ss.name, ss.color, ss.icon
             from source_statuses ss
-            join map_object_sources mos on mos.source_id = ss.source_id
-            where mos.map_object_id = @map_object_id
+            where ss.source_id in (
+                select source_id from map_object_sources where map_object_id = @map_object_id
+                union
+                select site.id
+                from sources site
+                join object_types ot on ot.category_id = site.category_id
+                join map_objects mo on mo.object_type_id = ot.id
+                where mo.id = @map_object_id
+                  and site.source_type = 'site'
+                  and site.is_enabled
+            )
             order by ss.source_id, ss.sort_order, ss.name
             """;
 

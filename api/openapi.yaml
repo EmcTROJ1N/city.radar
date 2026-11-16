@@ -202,10 +202,11 @@ paths:
       operationId: createObservation
       summary: Ручная отметка статуса
       description: |
-        Пользователь выбирает один из источников фиксации и статус из списка этого
-        источника. Срок актуальности берётся из таймаута источника. Отметка влияет на
-        текущий статус наравне с остальными: побеждает самое свежее наблюдение.
-        Фиксацию без источников отметить нельзя.
+        Пользователь выбирает статус источника фиксации. Если у фиксации есть системный
+        «Сайт» её категории, отметка по умолчанию идёт по нему; модератор может отметить
+        и по привязанному чату. Срок актуальности берётся из таймаута источника. Отметка
+        влияет на текущий статус наравне с остальными: побеждает самое свежее наблюдение.
+        Фиксацию без типа отметить нельзя (409): у неё нет категории, а значит и «Сайта».
       x-permission: observation.create
       requestBody:
         required: true
@@ -221,6 +222,7 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/ValidationError' }
         '429': { $ref: '#/components/responses/TooManyRequests' }
 
@@ -256,7 +258,9 @@ paths:
       tags: [Sources]
       operationId: createSource
       summary: Создать источник со статусами
-      description: Источник создаётся вместе со списком статусов (минимум один).
+      description: |
+        Источник создаётся вместе со списком статусов (минимум один). Системный «Сайт»
+        так не создаётся — он появляется только вместе с категорией (422 по `sourceType`).
       x-permission: source.manage
       requestBody:
         required: true
@@ -315,7 +319,10 @@ paths:
       tags: [Sources]
       operationId: deleteSource
       summary: Удалить источник
-      description: Удаляется только источник без наблюдений. Иначе 409 — отключите источник (`/sources/{id}/disable`).
+      description: |
+        Удаляется только источник без наблюдений. Иначе 409 — отключите источник
+        (`/sources/{id}/disable`). Системный «Сайт» удалить нельзя (409): он удаляется
+        только вместе с категорией.
       x-permission: source.manage
       responses:
         '204':
@@ -1141,6 +1148,7 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
     delete:
       tags: [Catalog]
       operationId: unbindSource
@@ -1623,7 +1631,7 @@ components:
       enum: [point, polygon]
     SourceType:
       type: string
-      enum: [telegram_chat, max_chat]
+      enum: [telegram_chat, max_chat, site]
     ObservationSourceType:
       type: string
       enum: [manual, moderator, telegram, max]
@@ -1963,6 +1971,12 @@ components:
         id: { type: string, format: uuid }
         name: { $ref: '#/components/schemas/NonEmptyText' }
         sourceType: { $ref: '#/components/schemas/SourceType' }
+        categoryId:
+          type: [string, 'null']
+          format: uuid
+          description: |
+            Категория системного источника «Сайт»; у источников-чатов `null`.
+            «Сайт» создаётся вместе с категорией и доступен фиксациям неявно.
         chatId:
           type: string
           description: Идентификатор или ссылка на чат (зависит от типа)

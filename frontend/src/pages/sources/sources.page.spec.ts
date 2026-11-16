@@ -1,6 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { ActivatedRoute, Router, convertToParamMap } from '@angular/router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { CategoriesApi } from '@entities/category';
 import { SourcesApi } from '@entities/source';
 import { StatusDefinitionsApi } from '@entities/status-definition';
 import type { Source } from '@shared/api/types';
@@ -59,6 +60,7 @@ describe('SourcesPage', () => {
           useValue: { list, get: vi.fn(), enable: vi.fn(), disable: vi.fn(), remove: vi.fn(), health },
         },
         { provide: StatusDefinitionsApi, useValue: { list: vi.fn().mockResolvedValue([]) } },
+        { provide: CategoriesApi, useValue: { list: vi.fn().mockResolvedValue([]) } },
         {
           provide: ToastService,
           useValue: { success: vi.fn(), error: vi.fn(), info: vi.fn(), fromError: vi.fn(), dismiss: vi.fn() },
@@ -83,7 +85,16 @@ describe('SourcesPage', () => {
     const text = fixture.nativeElement.textContent as string;
     expect(text).toContain('Чат жильцов Калининского');
     expect(text).toContain('@kalininsky_water');
-    expect(text).toContain('Вода есть');
+    // Статусы в списке — компактные точки, подписи показываются по наведению.
+    const dots = fixture.nativeElement.querySelectorAll('td .statuses__dot');
+    expect(dots).toHaveLength(1);
+
+    (fixture.nativeElement.querySelector('.statuses') as HTMLElement).dispatchEvent(
+      new MouseEvent('mouseenter'),
+    );
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('Вода есть');
+
     expect(fixture.nativeElement.querySelectorAll('tbody tr')).toHaveLength(1);
   });
 
@@ -115,5 +126,43 @@ describe('SourcesPage', () => {
     fixture.detectChanges();
 
     expect(fixture.nativeElement.textContent).toContain('Пока нет источников');
+  });
+
+  it('у «Сайта» системная плашка с категорией и нет удаления', async () => {
+    const site: Source = {
+      ...SOURCE,
+      id: 'site-1',
+      name: 'Сайт · Вода',
+      sourceType: 'site',
+      categoryId: 'cat-water',
+      chatId: '',
+      userPrompt: '',
+      linkByText: false,
+      state: 'unknown',
+      lastMessageAt: null,
+    };
+    const categories = TestBed.inject(CategoriesApi) as unknown as {
+      list: ReturnType<typeof vi.fn>;
+    };
+    categories.list.mockResolvedValue([{ id: 'cat-water', name: 'Вода' }]);
+    list.mockResolvedValue({ items: [site], nextCursor: null });
+
+    const fixture = TestBed.createComponent(SourcesPage);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    await settle();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.textContent).toContain('Системный · Вода');
+
+    (fixture.nativeElement.querySelector('tbody tr') as HTMLTableRowElement).click();
+    fixture.detectChanges();
+    await settle();
+    fixture.detectChanges();
+
+    // Форма системного источника не показывает чат, промпт и удаление.
+    expect(fixture.nativeElement.querySelector('#sf-chat')).toBeNull();
+    expect(fixture.nativeElement.querySelector('#sf-prompt')).toBeNull();
+    expect(fixture.nativeElement.textContent).not.toContain('Удалить');
   });
 });

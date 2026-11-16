@@ -16,7 +16,8 @@ namespace Api.IntegrationTests.Identity;
 /// Dev-seed каталога, источника и фиксации из <c>db/seed_dev.sql</c>:
 /// при старте хоста в окружении <c>Testing</c> есть категория «Вода», источник с двумя
 /// статусами ok/none и одна фиксация с привязкой к источнику; повторный запуск ничего
-/// не дублирует. Сид живёт в composition root — <see cref="DevCatalogSeeder"/>.
+/// не дублирует. Демо-фиксация и источник, удалённые через интерфейс, не возвращаются:
+/// журнал аудита хранит факт удаления. Сид живёт в composition root — <see cref="DevCatalogSeeder"/>.
 /// </summary>
 [Collection("postgres")]
 public sealed class DevCatalogSeederTests(PostgresFixture fixture)
@@ -55,6 +56,51 @@ public sealed class DevCatalogSeederTests(PostgresFixture fixture)
         }
 
         await AssertSeedAsync(ct);
+    }
+
+    [Fact]
+    public async Task Deleted_seeded_object_is_not_resurrected()
+    {
+        var ct = CancellationToken.None;
+
+        using var factory = new TestApiFactory(fixture.ConnectionString);
+        using var client = factory.CreateClient();
+
+        using (var health = await client.GetAsync("/health", ct))
+        {
+            health.StatusCode.ShouldBe(System.Net.HttpStatusCode.OK);
+        }
+
+        try
+        {
+            // Удаление через интерфейс: строки нет, в append-only журнале — запись.
+            await _db.ExecuteAsync($"delete from map_objects where id = '{WaterObjectId}'", ct);
+            await _db.ExecuteAsync(
+                $"""
+                 insert into audit_entries (action, entity_type, entity_id)
+                 values ('catalog.object.delete', 'map_object', '{WaterObjectId}')
+                 """,
+                ct);
+
+            await using (var scope = factory.Services.CreateAsyncScope())
+            {
+                await scope.ServiceProvider.GetRequiredService<DevCatalogSeeder>().SeedAsync(ct);
+            }
+
+            (await _db.CountAsync(
+                $"select count(*) from map_objects where id = '{WaterObjectId}'",
+                ct)).ShouldBe(0L);
+        }
+        finally
+        {
+            // Общая БД коллекции: убираем искусственную запись журнала и возвращаем сид,
+            // чтобы следующие тесты видели демо-фиксацию. TRUNCATE не вызывает триггер
+            // запрета DELETE (так же чистит журнал SeedTests).
+            await _db.ExecuteAsync("truncate table audit_entries", ct);
+
+            await using var scope = factory.Services.CreateAsyncScope();
+            await scope.ServiceProvider.GetRequiredService<DevCatalogSeeder>().SeedAsync(ct);
+        }
     }
 
     private async Task AssertSeedAsync(CancellationToken ct)
@@ -104,6 +150,15 @@ public sealed class DevCatalogSeederTests(PostgresFixture fixture)
             return Convert.ToInt64(
                 await command.ExecuteScalarAsync(ct),
                 CultureInfo.InvariantCulture);
+        }
+
+        public async Task ExecuteAsync(string sql, CancellationToken ct)
+        {
+            await using var connection = new NpgsqlConnection(fixture.ConnectionString);
+            await connection.OpenAsync(ct);
+
+            await using var command = new NpgsqlCommand(sql, connection);
+            await command.ExecuteNonQueryAsync(ct);
         }
     }
 }

@@ -324,6 +324,106 @@ public sealed class ObjectCardTests(PostgresFixture fixture) : IAsyncLifetime
     // Данные и запросы
     // ------------------------------------------------------------------
 
+    [Fact]
+    public async Task Card_includes_site_source_first()
+    {
+        var ct = CancellationToken.None;
+        var token = await _api.ModeratorTokenAsync(ct);
+        var suffix = CatalogApi.NewSuffix();
+        var code = $"card_site_{suffix}";
+        var name = $"Категория карточки {suffix}";
+
+        Guid categoryId;
+        using (var response = await _api.SendAsync(
+            HttpMethod.Post,
+            "/api/v1/catalog/categories",
+            token,
+            $$"""{"code":"{{code}}","name":"{{name}}"}""",
+            ct))
+        {
+            response.StatusCode.ShouldBe(HttpStatusCode.Created);
+            categoryId = (await CatalogApi.ReadJsonAsync(response, ct)).GetProperty("id").GetGuid();
+        }
+
+        await _api.ExecuteAsync(
+            $"""
+             insert into status_definitions
+               (category_id, code, name, color, icon, severity, is_positive)
+             values
+               ('{categoryId}', 'card_yes_{suffix}', 'Вода есть', 'ok', 'drop', 0, true),
+               ('{categoryId}', 'card_no_{suffix}', 'Воды нет', 'none', 'cross', 3, false)
+             """,
+            ct);
+
+        // Повторное сохранение категории копирует статусы справочника в «Сайт».
+        using (var response = await _api.SendAsync(
+            HttpMethod.Put,
+            $"/api/v1/catalog/categories/{categoryId}",
+            token,
+            $$"""{"code":"{{code}}","name":"{{name}}"}""",
+            ct))
+        {
+            response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        }
+
+        Guid objectTypeId;
+        using (var response = await _api.SendAsync(
+            HttpMethod.Post,
+            "/api/v1/catalog/object-types",
+            token,
+            $$"""
+              {"categoryId":"{{categoryId}}","code":"card_type_{{suffix}}",
+               "name":"Тип {{suffix}}","geometryKind":"point"}
+              """,
+            ct))
+        {
+            response.StatusCode.ShouldBe(HttpStatusCode.Created);
+            objectTypeId = (await CatalogApi.ReadJsonAsync(response, ct)).GetProperty("id").GetGuid();
+        }
+
+        var (chatSourceId, _) = await CreateSourceAsync(
+            token,
+            statuses: [("card_chat_yes", "Вода есть", "ok", "drop")],
+            ct);
+
+        var objectId = await CreateObjectOfTypeAsync(token, objectTypeId, [chatSourceId], ct);
+
+        var card = await GetCardAsync(objectId, accessToken: null, ct);
+        var sources = card.GetProperty("sources").EnumerateArray().ToArray();
+
+        sources.Length.ShouldBe(2);
+        sources[0].GetProperty("sourceType").GetString().ShouldBe("site");
+        sources[0].GetProperty("name").GetString().ShouldBe($"Сайт · {name}");
+        sources[0].GetProperty("timeoutSeconds").GetInt32().ShouldBe(10_800);
+        sources[0].GetProperty("statuses").GetArrayLength().ShouldBe(2);
+        sources[1].GetProperty("id").GetGuid().ShouldBe(chatSourceId);
+    }
+
+    private async Task<Guid> CreateObjectOfTypeAsync(
+        string token,
+        Guid objectTypeId,
+        IReadOnlyList<Guid> sourceIds,
+        CancellationToken ct)
+    {
+        var suffix = CatalogApi.NewSuffix();
+        var links = string.Join(",", sourceIds.Select(id => $"\"{id}\""));
+
+        using var response = await _api.SendAsync(
+            HttpMethod.Post,
+            ObjectsPath,
+            token,
+            $$"""
+              {"name":"Фиксация {{suffix}}","objectTypeId":"{{objectTypeId}}","coverageKind":"point",
+               "geometry":{"type":"Point","coordinates":[37.80,48.01]},
+               "isActive":true,"sourceIds":[{{links}}]}
+              """,
+            ct);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.Created);
+
+        return (await CatalogApi.ReadJsonAsync(response, ct)).GetProperty("id").GetGuid();
+    }
+
     private async Task<(Guid SourceId, Guid StatusId)> CreateSourceAsync(
         string token,
         IReadOnlyList<(string Code, string Name, string Color, string Icon)> statuses,

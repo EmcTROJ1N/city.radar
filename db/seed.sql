@@ -37,7 +37,7 @@ join (values
 ) as c(role_name, permission) on c.role_name = r.name;
 
 insert into source_types (code, name) values
-  ('telegram_chat', 'Telegram-чат'), ('max_chat', 'MAX-чат');
+  ('telegram_chat', 'Telegram-чат'), ('max_chat', 'MAX-чат'), ('site', 'Сайт');
 
 insert into global_settings (key, value) values
   ('observation_rate_per_hour', '20'),

@@ -11,6 +11,7 @@ import type {
 export const SOURCE_TYPE_LABEL: Record<SourceType, string> = {
   telegram_chat: 'Telegram-чат',
   max_chat: 'MAX-чат',
+  site: 'Сайт',
 };
 
 export const OBSERVATION_SOURCE_LABEL: Record<ObservationSourceType, string> = {

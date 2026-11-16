@@ -28,7 +28,11 @@ public interface IMapObjectDirectory
 /// <param name="Id">Идентификатор фиксации.</param>
 /// <param name="IsActive">Показывается ли фиксация на карте и доступна ли для отметок.</param>
 /// <param name="GroupId">Группа фиксации; <c>null</c>, если не задана.</param>
-public sealed record MapObjectInfo(Guid Id, bool IsActive, Guid? GroupId);
+/// <param name="CategoryId">
+/// Категория фиксации (через тип объекта); <c>null</c> у фиксации без типа. По ней обработчик
+/// отметок находит неявный источник «Сайт».
+/// </param>
+public sealed record MapObjectInfo(Guid Id, bool IsActive, Guid? GroupId, Guid? CategoryId);
 
 /// <summary>Краткая карточка фиксации для списков привязки источников.</summary>
 /// <param name="Id">Идентификатор фиксации.</param>

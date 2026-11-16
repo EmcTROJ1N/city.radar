@@ -763,4 +763,141 @@ public sealed class SourcesTests(PostgresFixture fixture) : IAsyncLifetime
             return Task.FromResult(true);
         }
     }
+
+    [Fact]
+    public async Task Site_source_cannot_be_created_directly_422()
+    {
+        var ct = CancellationToken.None;
+        var token = await _api.ModeratorTokenAsync(ct);
+        var suffix = CatalogApi.NewSuffix();
+
+        using var response = await _api.SendAsync(
+            HttpMethod.Post,
+            SourcesPath,
+            token,
+            $$"""
+              {"name":"Сайт {{suffix}}","sourceType":"site","timeoutSeconds":10800,
+               "statuses":[{"code":"ok","name":"Вода есть","color":"ok","icon":"drop"}]}
+              """,
+            ct);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.UnprocessableEntity);
+        (await CatalogApi.ReadJsonAsync(response, ct)).GetProperty("errors").EnumerateArray()
+            .ShouldContain(error => error.GetProperty("field").GetString() == "sourceType");
+    }
+
+    [Fact]
+    public async Task Site_source_cannot_be_deleted_409()
+    {
+        var ct = CancellationToken.None;
+        var token = await _api.ModeratorTokenAsync(ct);
+        var categoryId = await _api.CreateCategoryAsync(token, ct: ct);
+        var siteId = await ReadSiteSourceIdAsync(categoryId, ct);
+
+        using var response = await _api.SendAsync(
+            HttpMethod.Delete,
+            $"{SourcesPath}/{siteId}",
+            token,
+            json: null,
+            ct);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.Conflict);
+        (await CatalogApi.ReadJsonAsync(response, ct)).GetProperty("detail").GetString()
+            .ShouldNotBeNull().ShouldContain("категори");
+    }
+
+    [Fact]
+    public async Task Site_source_cannot_be_linked_to_object_422()
+    {
+        var ct = CancellationToken.None;
+        var token = await _api.ModeratorTokenAsync(ct);
+        var categoryId = await _api.CreateCategoryAsync(token, ct: ct);
+        var siteId = await ReadSiteSourceIdAsync(categoryId, ct);
+        var suffix = CatalogApi.NewSuffix();
+
+        Guid objectId;
+        using (var response = await _api.SendAsync(
+            HttpMethod.Post,
+            ObjectsPath,
+            token,
+            $$"""
+              {"name":"Фиксация {{suffix}}","coverageKind":"point",
+               "geometry":{"type":"Point","coordinates":[37.80,48.01]},"sourceIds":[]}
+              """,
+            ct))
+        {
+            response.StatusCode.ShouldBe(HttpStatusCode.Created);
+            objectId = (await CatalogApi.ReadJsonAsync(response, ct)).GetProperty("id").GetGuid();
+        }
+
+        using var linked = await _api.SendAsync(
+            HttpMethod.Put,
+            $"{ObjectsPath}/{objectId}/sources/{siteId}",
+            token,
+            json: null,
+            ct);
+
+        linked.StatusCode.ShouldBe(HttpStatusCode.UnprocessableEntity);
+        (await CatalogApi.ReadJsonAsync(linked, ct)).GetProperty("errors").EnumerateArray()
+            .ShouldContain(error => error.GetProperty("field").GetString() == "sourceId");
+    }
+
+    [Fact]
+    public async Task Site_source_can_update_name_and_timeout_only()
+    {
+        var ct = CancellationToken.None;
+        var token = await _api.ModeratorTokenAsync(ct);
+        var categoryId = await _api.CreateCategoryAsync(token, ct: ct);
+        var siteId = await ReadSiteSourceIdAsync(categoryId, ct);
+        var name = $"Сайт обновлён {CatalogApi.NewSuffix()}";
+
+        using (var response = await _api.SendAsync(
+            HttpMethod.Put,
+            $"{SourcesPath}/{siteId}",
+            token,
+            $$"""{"name":"{{name}}","sourceType":"site","timeoutSeconds":7200}""",
+            ct))
+        {
+            response.StatusCode.ShouldBe(HttpStatusCode.OK);
+
+            var json = await CatalogApi.ReadJsonAsync(response, ct);
+            json.GetProperty("name").GetString().ShouldBe(name);
+            json.GetProperty("timeoutSeconds").GetInt32().ShouldBe(7200);
+            json.GetProperty("sourceType").GetString().ShouldBe("site");
+            json.GetProperty("categoryId").GetGuid().ShouldBe(categoryId);
+            json.GetProperty("chatId").GetString().ShouldBeEmpty();
+        }
+
+        using (var response = await _api.SendAsync(
+            HttpMethod.Put,
+            $"{SourcesPath}/{siteId}",
+            token,
+            $$"""
+              {"name":"{{name}}","sourceType":"site","timeoutSeconds":7200,
+               "chatId":"@site_chat","userPrompt":"промпт","linkByText":true}
+              """,
+            ct))
+        {
+            response.StatusCode.ShouldBe(HttpStatusCode.UnprocessableEntity);
+            (await CatalogApi.ReadJsonAsync(response, ct)).GetProperty("errors").EnumerateArray()
+                .Select(error => error.GetProperty("field").GetString())
+                .ShouldContain("chatId");
+        }
+    }
+
+    private async Task<Guid> ReadSiteSourceIdAsync(Guid categoryId, CancellationToken ct)
+    {
+        await using var connection = new NpgsqlConnection(fixture.ConnectionString);
+        await connection.OpenAsync(ct);
+
+        await using var command = new NpgsqlCommand(
+            """
+            select id from sources
+            where category_id = @category and source_type = 'site'
+            """,
+            connection);
+        command.Parameters.AddWithValue("category", NpgsqlTypes.NpgsqlDbType.Uuid, categoryId);
+
+        return (Guid)(await command.ExecuteScalarAsync(ct))!;
+    }
 }

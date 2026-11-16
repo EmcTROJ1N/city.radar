@@ -25,6 +25,13 @@ public interface ISourceDirectory
 
     /// <summary>Существует ли источник; удалённый источник не существует.</summary>
     Task<bool> ExistsAsync(Guid sourceId, CancellationToken ct);
+
+    /// <summary>
+    /// Идентификатор системного источника «Сайт» категории; <c>null</c> — «Сайта» нет.
+    /// Источник доступен фиксациям категории неявно, без записи в <c>map_object_sources</c>.
+    /// Возвращается и выключенный «Сайт»: запрет отметок по нему проверяется отдельно.
+    /// </summary>
+    Task<Guid?> GetSiteSourceIdAsync(Guid categoryId, CancellationToken ct);
 }
 
 /// <summary>Политика источника (таблица <c>source_policies</c> и поля <c>sources</c>).</summary>

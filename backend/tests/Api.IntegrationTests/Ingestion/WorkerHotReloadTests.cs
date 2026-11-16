@@ -59,6 +59,24 @@ public sealed class WorkerHotReloadTests(Infrastructure.PostgresFixture fixture)
     }
 
     [Fact]
+    public async Task Site_source_is_not_read_by_worker()
+    {
+        var ct = CancellationToken.None;
+        var active = await WorkerDatabase.CreateSourceAsync(ConnectionString, ct: ct);
+        var siteId = await WorkerDatabase.CreateSiteSourceAsync(ConnectionString, ct);
+        var factory = new FakeAdapterFactory();
+
+        await using var worker = new WorkerTestContext(ConnectionString, factory, new FakeLlmProvider());
+        await worker.StartAsync(ct);
+
+        // Ждём применения конфигурации по обычному источнику, затем проверяем «Сайт».
+        await WaitForRunningAdapterAsync(factory, active, ct);
+
+        worker.Supervisor.RunningSourceIds.ShouldNotContain(siteId);
+        factory.InstanceCount(siteId).ShouldBe(0, "у «Сайта» нет адаптера и сообщений");
+    }
+
+    [Fact]
     public async Task Changing_prompt_applies_to_next_message()
     {
         var ct = CancellationToken.None;

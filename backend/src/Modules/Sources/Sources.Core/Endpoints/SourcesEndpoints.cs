@@ -69,10 +69,10 @@ public static class SourcesEndpoints
         }
 
         if (sourceType is not null
-            && sourceType is not ("telegram_chat" or "max_chat"))
+            && sourceType is not ("telegram_chat" or "max_chat" or "site"))
         {
             return Task.FromResult<IResult>(ProblemResponses.BadRequest(
-                "Неизвестный тип источника: допустимы telegram_chat и max_chat"));
+                "Неизвестный тип источника: допустимы telegram_chat, max_chat и site"));
         }
 
         if (!PageRequest.TryCreate(limit, cursor, out var page, out var failure))

@@ -38,6 +38,7 @@ public static class SourcesServiceCollectionExtensions
         // Контракты для других модулей: каталог проверяет существование источника,
         // модуль наблюдений позже заменит guard удаления (TryAdd — чтобы подмена была возможна).
         services.AddScoped<ISourceDirectory, SourceDirectory>();
+        services.AddScoped<ISiteSourceProvisioner, SiteSourceProvisioner>();
         services.TryAddScoped<ISourceDeletionGuard, SourceDeletionGuard>();
         services.TryAddScoped<ISourceStatusDeletionGuard, SourceStatusDeletionGuard>();
 

@@ -297,4 +297,162 @@ public sealed class CategoriesTests(PostgresFixture fixture) : IAsyncLifetime
         }
     }
 
+    [Fact]
+    public async Task Creating_category_creates_site_source_with_category_statuses()
+    {
+        var ct = CancellationToken.None;
+        var token = await _api.ModeratorTokenAsync(ct);
+        var suffix = CatalogApi.NewSuffix();
+        var code = $"cat_site_{suffix}";
+        var name = $"Категория сайта {suffix}";
+
+        var categoryId = await _api.CreateCategoryAsync(token, code, name, ct);
+
+        (await _api.CountAsync(
+            $"""
+             select count(*) from sources
+             where category_id = '{categoryId}' and source_type = 'site' and name = 'Сайт · {name}'
+             """,
+            ct)).ShouldBe(1L);
+
+        (await _api.CountAsync(
+            $"""
+             select count(*) from source_policies p
+             join sources s on s.id = p.source_id
+             where s.category_id = '{categoryId}'
+               and s.source_type = 'site'
+               and p.timeout = interval '3 hours'
+             """,
+            ct)).ShouldBe(1L);
+
+        // Статусы справочника появляются уже после создания категории; повторное сохранение
+        // категории синхронизирует их в «Сайт».
+        await _api.ExecuteAsync(
+            $"""
+             insert into status_definitions
+               (category_id, code, name, color, icon, severity, is_positive)
+             values
+               ('{categoryId}', 'site_yes_{suffix}', 'Вода есть', 'ok', 'drop', 0, true),
+               ('{categoryId}', 'site_no_{suffix}', 'Воды нет', 'none', 'cross', 3, false)
+             """,
+            ct);
+
+        using (var response = await _api.SendAsync(
+            HttpMethod.Put,
+            $"/api/v1/catalog/categories/{categoryId}",
+            token,
+            $$"""{"code":"{{code}}","name":"{{name}}"}""",
+            ct))
+        {
+            response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        }
+
+        (await _api.CountAsync(
+            $"""
+             select count(*) from source_statuses ss
+             join sources s on s.id = ss.source_id
+             where s.category_id = '{categoryId}'
+               and s.source_type = 'site'
+               and ss.code in ('site_yes_{suffix}', 'site_no_{suffix}')
+             """,
+            ct)).ShouldBe(2L);
+    }
+
+    [Fact]
+    public async Task Deleting_category_without_observations_removes_site_source()
+    {
+        var ct = CancellationToken.None;
+        var token = await _api.ModeratorTokenAsync(ct);
+        var categoryId = await _api.CreateCategoryAsync(token, ct: ct);
+
+        (await _api.CountAsync(
+            $"select count(*) from sources where category_id = '{categoryId}' and source_type = 'site'",
+            ct)).ShouldBe(1L);
+
+        using (var response = await _api.SendAsync(
+            HttpMethod.Delete,
+            $"/api/v1/catalog/categories/{categoryId}",
+            token,
+            json: null,
+            ct))
+        {
+            response.StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        }
+
+        (await _api.CountAsync(
+            $"select count(*) from sources where category_id = '{categoryId}'",
+            ct)).ShouldBe(0L);
+    }
+
+    [Fact]
+    public async Task Deleting_category_with_site_observations_409()
+    {
+        var ct = CancellationToken.None;
+        var token = await _api.ModeratorTokenAsync(ct);
+        var suffix = CatalogApi.NewSuffix();
+        var code = $"cat_obs_{suffix}";
+        var categoryId = await _api.CreateCategoryAsync(token, code, $"Категория {suffix}", ct);
+
+        Guid objectTypeId;
+        using (var response = await _api.SendAsync(
+            HttpMethod.Post,
+            "/api/v1/catalog/object-types",
+            token,
+            $$"""
+              {"categoryId":"{{categoryId}}","code":"obs_type_{{suffix}}",
+               "name":"Тип {{suffix}}","geometryKind":"point"}
+              """,
+            ct))
+        {
+            response.StatusCode.ShouldBe(HttpStatusCode.Created);
+            objectTypeId = (await CatalogApi.ReadJsonAsync(response, ct)).GetProperty("id").GetGuid();
+        }
+
+        Guid objectId;
+        using (var response = await _api.SendAsync(
+            HttpMethod.Post,
+            "/api/v1/catalog/objects",
+            token,
+            $$"""
+              {"name":"Фиксация {{suffix}}","objectTypeId":"{{objectTypeId}}","coverageKind":"point",
+               "geometry":{"type":"Point","coordinates":[37.80,48.01]},"sourceIds":[]}
+              """,
+            ct))
+        {
+            response.StatusCode.ShouldBe(HttpStatusCode.Created);
+            objectId = (await CatalogApi.ReadJsonAsync(response, ct)).GetProperty("id").GetGuid();
+        }
+
+        await _api.ExecuteAsync(
+            $"""
+             insert into source_statuses (source_id, code, name, color, icon, sort_order)
+             select id, 'site_obs_{suffix}', 'Вода есть', 'ok', 'drop', 1
+             from sources
+             where category_id = '{categoryId}' and source_type = 'site';
+
+             insert into observations
+               (map_object_id, source_id, source_status_id, source_type, reporter_id,
+                observed_at, received_at, expires_at)
+             select '{objectId}', s.id, ss.id, 'manual', '{CatalogApi.ModeratorId}',
+                    now(), now(), now() + interval '1 hour'
+             from sources s
+             join source_statuses ss on ss.source_id = s.id
+             where s.category_id = '{categoryId}' and s.source_type = 'site';
+             """,
+            ct);
+
+        using (var response = await _api.SendAsync(
+            HttpMethod.Delete,
+            $"/api/v1/catalog/categories/{categoryId}",
+            token,
+            json: null,
+            ct))
+        {
+            response.StatusCode.ShouldBe(HttpStatusCode.Conflict);
+        }
+
+        (await _api.CountAsync(
+            $"select count(*) from sources where category_id = '{categoryId}' and source_type = 'site'",
+            ct)).ShouldBe(1L);
+    }
 }

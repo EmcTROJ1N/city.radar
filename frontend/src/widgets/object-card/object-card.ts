@@ -186,6 +186,7 @@ export class ObjectCard {
   }
 
   protected typeIcon(type: SourceType): IconName {
+    if (type === 'site') return 'external';
     return type === 'max_chat' ? 'message' : 'send';
   }
 

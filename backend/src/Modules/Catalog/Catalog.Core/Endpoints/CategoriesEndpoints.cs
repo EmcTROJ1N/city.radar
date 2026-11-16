@@ -10,6 +10,8 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
 
+using Sources.Contracts;
+
 namespace Catalog.Core.Endpoints;
 
 /// <summary>
@@ -56,6 +58,7 @@ public static class CategoriesEndpoints
         HttpContext context,
         MayakDbContext db,
         IAuditLog audit,
+        ISiteSourceProvisioner siteSourceProvisioner,
         CancellationToken ct)
     {
         using var document = await CatalogRequestSupport.TryReadObjectAsync(context.Request, ct);
@@ -92,6 +95,9 @@ public static class CategoriesEndpoints
 
         db.Add(entity);
 
+        // «Сайт» категории: источник, политика и статусы пишутся той же транзакцией.
+        await siteSourceProvisioner.EnsureForCategoryAsync(entity.Id, entity.Name, ct);
+
         await audit.WriteAsync(
             "catalog.category.create",
             EntityType,
@@ -120,6 +126,7 @@ public static class CategoriesEndpoints
         HttpContext context,
         MayakDbContext db,
         IAuditLog audit,
+        ISiteSourceProvisioner siteSourceProvisioner,
         CancellationToken ct)
     {
         using var document = await CatalogRequestSupport.TryReadObjectAsync(context.Request, ct);
@@ -158,6 +165,9 @@ public static class CategoriesEndpoints
         entity.Icon = input.Icon;
         entity.SortOrder = input.SortOrder;
         entity.IsActive = input.IsActive;
+
+        // Переименование категории меняет название «Сайта»; недостающие статусы добавляются.
+        await siteSourceProvisioner.EnsureForCategoryAsync(entity.Id, entity.Name, ct);
 
         await audit.WriteAsync(
             "catalog.category.update",

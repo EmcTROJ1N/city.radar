@@ -60,6 +60,7 @@ internal sealed class SourceConfiguration : IEntityTypeConfiguration<Source>
             .HasDefaultValueSql("gen_random_uuid()");
         builder.Property(source => source.Name).HasColumnType("text").IsRequired();
         builder.Property(source => source.SourceType).HasColumnType("text").IsRequired();
+        builder.Property(source => source.CategoryId).HasColumnType("uuid");
         builder.Property(source => source.Settings)
             .HasColumnType("jsonb")
             .IsRequired()
@@ -95,6 +96,12 @@ internal sealed class SourceConfiguration : IEntityTypeConfiguration<Source>
             .HasForeignKey(source => source.SourceType)
             .OnDelete(DeleteBehavior.Restrict);
 
+        // «Сайт» — один системный источник на категорию; привязка категории живёт только у него.
+        builder.HasIndex(source => source.CategoryId)
+            .IsUnique()
+            .HasDatabaseName("sources_site_category_uq")
+            .HasFilter("source_type = 'site'");
+
         // Ссылки на секреты: удаление используемого секрета запрещено (409),
         // как и в эталоне схемы, где FK объявлен без on delete.
         builder.HasOne<Secret>()
@@ -116,6 +123,9 @@ internal sealed class SourceConfiguration : IEntityTypeConfiguration<Source>
             table.HasCheckConstraint(
                 "sources_state_check",
                 "state in ('unknown', 'ok', 'silent', 'flood_wait', 'auth_error', 'error')");
+            table.HasCheckConstraint(
+                "sources_site_category_check",
+                "(source_type = 'site') = (category_id is not null)");
         });
     }
 }

@@ -13,8 +13,17 @@ internal sealed class Source
     /// <summary>Название источника.</summary>
     public string Name { get; set; } = null!;
 
-    /// <summary>Код типа адаптера из <c>source_types</c>: <c>telegram_chat</c> или <c>max_chat</c>.</summary>
+    /// <summary>
+    /// Код типа адаптера из <c>source_types</c>: <c>telegram_chat</c>, <c>max_chat</c> или
+    /// <c>site</c> (системный источник «Сайт», один на категорию).
+    /// </summary>
     public string SourceType { get; set; } = null!;
+
+    /// <summary>
+    /// Категория системного источника «Сайт»; <c>null</c> у источников-чатов. Заполнен ровно
+    /// тогда и только тогда, когда <see cref="SourceType"/> = <c>site</c>.
+    /// </summary>
+    public Guid? CategoryId { get; set; }
 
     /// <summary>Параметры типа, в первую очередь идентификатор чата: <c>{"chatId":"@name"}</c>.</summary>
     public string Settings { get; set; } = "{}";

@@ -26,17 +26,19 @@ const COMMENT_MAX = 500;
         <span>Чтобы отметить статус, <a routerLink="/login">войдите</a>. Вход через MAX будет доступен позже.</span>
       </p>
     } @else if (card().sources.length === 0) {
-      <p class="callout"><app-icon name="alert" /><span>У фиксации нет источников, поэтому отметить статус нельзя.</span></p>
+      <p class="callout"><app-icon name="alert" /><span>У фиксации не задан тип, поэтому отметить статус нельзя.</span></p>
     } @else {
       <form class="stack" (submit)="submit($event)">
         <h3>Отметить статус</h3>
 
-        <div class="field">
-          <label for="rs-source">Источник</label>
-          <select id="rs-source" [value]="sourceId()" (change)="pickSource($any($event.target).value)">
-            @for (source of card().sources; track source.id) { <option [value]="source.id">{{ source.name }}</option> }
-          </select>
-        </div>
+        @if (showSourceSelect()) {
+          <div class="field">
+            <label for="rs-source">Источник</label>
+            <select id="rs-source" [value]="sourceId()" (change)="pickSource($any($event.target).value)">
+              @for (source of selectableSources(); track source.id) { <option [value]="source.id">{{ source.name }}</option> }
+            </select>
+          </div>
+        }
 
         <div class="field">
           <label>Статус</label>
@@ -47,7 +49,7 @@ const COMMENT_MAX = 500;
                 <app-icon [name]="iconName(status.icon)" />{{ status.name }}
               </button>
             } @empty {
-              <small>У источника нет статусов.</small>
+              <small>{{ statusesEmptyText() }}</small>
             }
           </div>
           @if (fieldErrors()['sourceStatusId']; as message) { <span class="err">{{ message }}</span> }
@@ -101,6 +103,7 @@ export class ReportStatus {
   protected readonly max = COMMENT_MAX;
   protected readonly iconName = normalizeIcon;
   protected readonly allowed = computed(() => this.session.has(P.observationCreate));
+  protected readonly isModerator = computed(() => this.session.has(P.observationRetract));
 
   protected readonly sourceId = signal('');
   protected readonly statusId = signal('');
@@ -111,10 +114,34 @@ export class ReportStatus {
   protected readonly formError = signal<string | null>(null);
 
   protected readonly source = computed<SourceCardView | undefined>(() => {
-    const sources = this.card().sources;
+    const sources = this.selectableSources();
     return sources.find((s) => s.id === this.sourceId()) ?? sources[0];
   });
   protected readonly statuses = computed(() => this.source()?.statuses ?? []);
+
+  /** «Сайт» категории фиксации: он выбран автоматически у обычного пользователя. */
+  protected readonly siteSource = computed(() =>
+    this.card().sources.find((source) => source.sourceType === 'site'),
+  );
+
+  /** Модератор может отмечать и по чату, остальным доступен только «Сайт» (если он есть). */
+  protected readonly selectableSources = computed<SourceCardView[]>(() => {
+    const sources = this.card().sources;
+    const site = this.siteSource();
+    if (this.isModerator()) return sources;
+    return site ? [site] : sources;
+  });
+
+  protected readonly showSourceSelect = computed(() => {
+    const sources = this.selectableSources();
+    if (sources.length <= 1) return false;
+    // Без «Сайта» выбор привязанных чатов остаётся, как раньше.
+    return this.isModerator() || !this.siteSource();
+  });
+
+  protected readonly statusesEmptyText = computed(() =>
+    this.siteSource() ? 'Статусы для отметок ещё не настроены.' : 'У источника нет статусов.',
+  );
 
   protected pickSource(id: string): void {
     this.sourceId.set(id);

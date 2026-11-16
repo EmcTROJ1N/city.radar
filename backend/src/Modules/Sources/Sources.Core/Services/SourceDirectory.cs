@@ -65,4 +65,12 @@ internal sealed class SourceDirectory(MayakDbContext db) : ISourceDirectory
         db.Set<Source>()
             .AsNoTracking()
             .AnyAsync(source => source.Id == sourceId, ct);
+
+    public Task<Guid?> GetSiteSourceIdAsync(Guid categoryId, CancellationToken ct) =>
+        db.Set<Source>()
+            .AsNoTracking()
+            .Where(source => source.SourceType == SiteSourceProvisioner.SourceTypeCode
+                && source.CategoryId == categoryId)
+            .Select(source => (Guid?)source.Id)
+            .FirstOrDefaultAsync(ct);
 }

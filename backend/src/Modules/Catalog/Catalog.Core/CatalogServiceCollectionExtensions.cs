@@ -30,6 +30,9 @@ public static class CatalogServiceCollectionExtensions
         services.AddScoped<IMapObjectDirectory, MapObjectDirectory>();
         services.TryAddScoped<IMapObjectDeletionGuard, MapObjectDeletionGuard>();
 
+        // Справочник статусов для системного источника «Сайт» (модуль источников).
+        services.AddScoped<IStatusDefinitionDirectory, StatusDefinitionDirectory>();
+
         return services;
     }
 }

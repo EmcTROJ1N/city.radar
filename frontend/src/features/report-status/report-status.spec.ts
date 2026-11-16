@@ -30,6 +30,33 @@ const CARD: MapObjectCard = {
   ],
 };
 
+const SITE: MapObjectCard = {
+  ...CARD,
+  sources: [
+    {
+      id: 'site-1',
+      name: 'Сайт · Вода',
+      sourceType: 'site',
+      timeoutSeconds: 10800,
+      statuses: [
+        { id: 'site-ok', code: 'ok', name: 'Вода есть', color: 'ok', icon: 'drop' },
+        { id: 'site-none', code: 'none', name: 'Воды нет', color: 'none', icon: 'cross' },
+      ],
+      lastObservation: null,
+    },
+    {
+      id: 'src-1',
+      name: 'Чат жильцов',
+      sourceType: 'telegram_chat',
+      timeoutSeconds: 3600,
+      statuses: [
+        { id: 'st-ok', code: 'ok', name: 'Вода есть', color: 'ok', icon: 'drop' },
+      ],
+      lastObservation: null,
+    },
+  ],
+};
+
 describe('ReportStatus', () => {
   let create: ReturnType<typeof vi.fn>;
   let has: ReturnType<typeof vi.fn>;
@@ -61,13 +88,13 @@ describe('ReportStatus', () => {
     expect(fixture.nativeElement.querySelector('form')).toBeNull();
   });
 
-  it('без источников объясняет, почему отметить нельзя', () => {
+  it('без источников объясняет, что у фиксации не задан тип', () => {
     has.mockReturnValue(true);
     const fixture = TestBed.createComponent(ReportStatus);
     fixture.componentRef.setInput('card', { ...CARD, sources: [] });
     fixture.detectChanges();
 
-    expect(fixture.nativeElement.textContent).toContain('нет источников');
+    expect(fixture.nativeElement.textContent).toContain('не задан тип');
   });
 
   it('отправляет выбранный статус через ObservationsApi.create', async () => {
@@ -92,5 +119,50 @@ describe('ReportStatus', () => {
       sourceId: 'src-1',
       sourceStatusId: 'st-none',
     });
+  });
+
+  it('обычный пользователь отмечает по «Сайту» без выбора источника', async () => {
+    has.mockImplementation((permission: string) => permission === 'observation.create');
+    const fixture = TestBed.createComponent(ReportStatus);
+    fixture.componentRef.setInput('card', SITE);
+    fixture.detectChanges();
+
+    // Селекта источника нет: «Сайт» выбран сам.
+    expect(fixture.nativeElement.querySelector('#rs-source')).toBeNull();
+    const tiles: HTMLButtonElement[] = Array.from(fixture.nativeElement.querySelectorAll('button.tile'));
+    expect(tiles).toHaveLength(2);
+    tiles[1]!.click();
+    fixture.detectChanges();
+
+    const form: HTMLFormElement = fixture.nativeElement.querySelector('form');
+    form.dispatchEvent(new Event('submit'));
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(create).toHaveBeenCalledWith({
+      mapObjectId: 'obj-1',
+      sourceId: 'site-1',
+      sourceStatusId: 'site-none',
+    });
+  });
+
+  it('модератору остаётся выбор источника', () => {
+    has.mockReturnValue(true);
+    const fixture = TestBed.createComponent(ReportStatus);
+    fixture.componentRef.setInput('card', SITE);
+    fixture.detectChanges();
+
+    const select: HTMLSelectElement | null = fixture.nativeElement.querySelector('#rs-source');
+    expect(select).not.toBeNull();
+    expect(select!.options).toHaveLength(2);
+  });
+
+  it('без статусов у «Сайта» предлагает их настроить', () => {
+    has.mockImplementation((permission: string) => permission === 'observation.create');
+    const fixture = TestBed.createComponent(ReportStatus);
+    fixture.componentRef.setInput('card', { ...SITE, sources: [{ ...SITE.sources[0]!, statuses: [] }] });
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.textContent).toContain('ещё не настроены');
   });
 });

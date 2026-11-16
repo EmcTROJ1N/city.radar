@@ -44,6 +44,7 @@ internal sealed class SourceConfigReader(MayakDbContext db)
            and jsonb_typeof(global_proxy.value) = 'string'
         left join secrets global_proxy_secret on global_proxy_secret.id = (global_proxy.value #>> '{}')::uuid
         where s.is_enabled
+          and s.source_type <> 'site'
         order by s.id
         """;
 

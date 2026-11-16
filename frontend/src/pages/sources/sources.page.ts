@@ -1,8 +1,9 @@
-import { Component, computed, effect, inject, signal } from '@angular/core';
+import { Component, DestroyRef, computed, effect, inject, signal } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
+import { CategoriesApi } from '@entities/category';
 import { SourcesApi, sourceStateIcon, sourceStateTone, type ListSourcesQuery } from '@entities/source';
 import { SourceForm } from '@features/source-edit/source-form';
-import { SOURCE_TYPE_OPTIONS } from '@features/source-edit/source-form.model';
+import { SOURCE_TYPE_FILTER_OPTIONS } from '@features/source-edit/source-form.model';
 import { SourceStatuses } from '@features/source-edit/source-statuses';
 import { SourceHealthPanel } from '@features/source-health/source-health';
 import { ApiError, errorText, toApiError } from '@shared/api/api-error';
@@ -91,13 +92,20 @@ const PAGE_SIZE = 50;
                       <td>
                         <strong>{{ source.name }}</strong>
                         <div>
-                          <small>{{ typeLabels[source.sourceType] }} · {{ source.chatId }}@if (!source.isEnabled) { · выключен }</small>
+                          <small>
+                            @if (isSite(source)) {
+                              Системный · {{ categoryName(source) }}
+                            } @else {
+                              {{ typeLabels[source.sourceType] }} · {{ source.chatId }}
+                            }
+                            @if (!source.isEnabled) { · выключен }
+                          </small>
                         </div>
                       </td>
                       <td>
-                        <div class="row">
+                        <div class="statuses" (mouseenter)="showStatuses($event, source)" (mouseleave)="hideStatuses()">
                           @for (status of source.statuses; track status.id) {
-                            <app-status-badge [label]="status.name" [tone]="status.color" [icon]="iconName(status.icon)" />
+                            <span class="statuses__dot" [class]="'tone-' + status.color" [title]="status.name"></span>
                           } @empty {
                             <small>—</small>
                           }
@@ -128,13 +136,16 @@ const PAGE_SIZE = 50;
             <div class="card selected-head">
               <div class="row">
                 <strong class="grow">{{ source.name }}</strong>
+                @if (isSite(source)) { <span class="chip">Системный · {{ categoryName(source) }}</span> }
                 <button class="btn btn--sm" type="button" [disabled]="busyId() === source.id" (click)="toggle(source)">
                   <app-icon [name]="source.isEnabled ? 'cross' : 'check'" />
                   {{ source.isEnabled ? 'Выключить' : 'Включить' }}
                 </button>
-                <button class="btn btn--sm btn--ghost btn--danger" type="button" (click)="remove(source)">
-                  <app-icon name="trash" />Удалить
-                </button>
+                @if (!isSite(source)) {
+                  <button class="btn btn--sm btn--ghost btn--danger" type="button" (click)="remove(source)">
+                    <app-icon name="trash" />Удалить
+                  </button>
+                }
               </div>
             </div>
 
@@ -146,10 +157,29 @@ const PAGE_SIZE = 50;
           }
         </div>
       </div>
+
+      @if (statusPop(); as pop) {
+        <div class="statuses__pop" role="tooltip" [style.left.px]="pop.x" [style.top.px]="pop.y"
+          (mouseenter)="keepStatuses()" (mouseleave)="hideStatuses()">
+          @for (status of pop.items; track status.id) {
+            <app-status-badge [label]="status.name" [tone]="status.color" [icon]="iconName(status.icon)" />
+          }
+        </div>
+      }
     </div>`,
   styles: `
     .filters { display: grid; grid-template-columns: minmax(180px, 1fr) max-content max-content; gap: 8px; align-items: end; padding: 12px; }
     .selected-head { padding: 10px 12px; }
+    // Статусы в списке — компактные точки; полные плашки показываются при наведении.
+    .statuses { display: inline-flex; align-items: center; gap: 5px; cursor: default; }
+    .statuses__dot { width: 10px; height: 10px; border-radius: 50%; background: var(--tone, var(--st-stale)); flex: none; }
+    .statuses__pop { position: fixed; z-index: 60; display: grid; gap: 4px; padding: 8px;
+      border-radius: var(--r-md); background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow-float); }
+    @media (max-width: 900px) {
+      // На узких экранах прячем второстепенные колонки, чтобы список не расползался.
+      .table th:nth-child(3), .table td:nth-child(3),
+      .table th:nth-child(5), .table td:nth-child(5) { display: none; }
+    }
     @media (max-width: 700px) {
       .filters { grid-template-columns: 1fr; }
     }
@@ -157,12 +187,13 @@ const PAGE_SIZE = 50;
 })
 export class SourcesPage {
   private readonly api = inject(SourcesApi);
+  private readonly categoriesApi = inject(CategoriesApi);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
   private readonly toasts = inject(ToastService);
   private readonly confirm = inject(ConfirmService);
 
-  protected readonly types = SOURCE_TYPE_OPTIONS;
+  protected readonly types = SOURCE_TYPE_FILTER_OPTIONS;
   protected readonly typeLabels = SOURCE_TYPE_LABEL;
   protected readonly stateLabels = SOURCE_STATE_LABEL;
   protected readonly stateTone = sourceStateTone;
@@ -181,6 +212,11 @@ export class SourcesPage {
   protected readonly typeFilter = signal<SourceType | ''>('');
   protected readonly enabledFilter = signal<EnabledFilter>('all');
   protected readonly busyId = signal<string | null>(null);
+  protected readonly categories = signal<Record<string, string>>({});
+
+  /** Плавающая подсказка со статусами источника — показывается по наведению. */
+  protected readonly statusPop = signal<{ x: number; y: number; items: SourceStatus[] } | null>(null);
+  private popTimer: ReturnType<typeof setTimeout> | null = null;
 
   protected readonly selectedId = signal<string | null>(this.route.snapshot.queryParamMap.get('id'));
   protected readonly creating = computed(() => this.selectedId() === 'new');
@@ -202,7 +238,9 @@ export class SourcesPage {
   private loadSeq = 0;
 
   constructor() {
+    inject(DestroyRef).onDestroy(() => this.clearPopTimer());
     void this.load();
+    void this.loadCategories();
     // Выбранный источник живёт в адресе: ссылку ?id=<id> можно открыть напрямую.
     effect(() => {
       void this.router.navigate([], {
@@ -215,6 +253,25 @@ export class SourcesPage {
 
   protected create(): void {
     this.selectedId.set('new');
+  }
+
+  protected isSite(source: Source): boolean {
+    return source.sourceType === 'site';
+  }
+
+  /** Название категории системного «Сайта» для плашки «Системный · <категория>». */
+  protected categoryName(source: Source): string {
+    if (!source.categoryId) return 'без категории';
+    return this.categories()[source.categoryId] ?? 'категория';
+  }
+
+  private async loadCategories(): Promise<void> {
+    try {
+      const items = await this.categoriesApi.list();
+      this.categories.set(Object.fromEntries(items.map((item) => [item.id, item.name])));
+    } catch {
+      // Плашка категории не критична: список источников остаётся рабочим.
+    }
   }
 
   protected select(id: string | null): void {
@@ -234,6 +291,31 @@ export class SourcesPage {
   protected setEnabled(value: string): void {
     this.enabledFilter.set(value as EnabledFilter);
     void this.load();
+  }
+
+  protected showStatuses(event: MouseEvent, source: Source): void {
+    this.clearPopTimer();
+    if (!source.statuses.length) return;
+    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    this.statusPop.set({ x: rect.left, y: rect.bottom + 6, items: source.statuses });
+  }
+
+  /** Пауза перед скрытием: даёт перевести курсор на саму подсказку. */
+  protected hideStatuses(): void {
+    this.clearPopTimer();
+    this.popTimer = setTimeout(() => {
+      this.popTimer = null;
+      this.statusPop.set(null);
+    }, 160);
+  }
+
+  protected keepStatuses(): void {
+    this.clearPopTimer();
+  }
+
+  private clearPopTimer(): void {
+    if (this.popTimer) clearTimeout(this.popTimer);
+    this.popTimer = null;
   }
 
   protected async load(): Promise<void> {

@@ -29,6 +29,12 @@ export const SOURCE_TYPE_OPTIONS: { value: SourceType; label: string }[] = [
   { value: 'max_chat', label: SOURCE_TYPE_LABEL.max_chat },
 ];
 
+/** Фильтр списка знает и системный тип: «Сайт» создаётся только вместе с категорией. */
+export const SOURCE_TYPE_FILTER_OPTIONS: { value: SourceType; label: string }[] = [
+  ...SOURCE_TYPE_OPTIONS,
+  { value: 'site', label: SOURCE_TYPE_LABEL.site },
+];
+
 export const STATUS_COLOR_OPTIONS: { value: StatusColor; label: string }[] = (
   ['ok', 'limited', 'none', 'queue', 'schedule', 'stale'] as const
 ).map((value) => ({ value, label: STATUS_COLOR_LABEL[value] }));

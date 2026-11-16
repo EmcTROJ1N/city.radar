@@ -204,6 +204,7 @@ create table sources (
   id                  uuid primary key default gen_random_uuid(),
   name                text not null,
   source_type         text not null references source_types(code),
+  category_id         uuid references categories(id) on delete cascade, -- только у системного «Сайта»
   settings            jsonb not null default '{}',   -- идентификатор чата и параметры типа
   user_prompt         text not null default '',      -- промпт-фильтр пользователя
   link_by_text        boolean not null default true, -- режим «определять фиксацию по тексту»
@@ -215,8 +216,11 @@ create table sources (
   proxy_id            uuid references secrets(id),
   created_by          uuid references users(id),
   created_at          timestamptz not null default now(),
-  updated_at          timestamptz not null default now()
+  updated_at          timestamptz not null default now(),
+  -- category_id задан ровно у «Сайта»: один системный источник на категорию.
+  check ((source_type = 'site') = (category_id is not null))
 );
+create unique index sources_site_category_uq on sources (category_id) where source_type = 'site';
 create trigger sources_updated before update on sources
   for each row execute function set_updated_at();
 

@@ -39,12 +39,15 @@ internal sealed class MapObjectDirectory(MayakDbContext db) : IMapObjectDirector
             .AnyAsync(mapObject => mapObject.Id == mapObjectId, ct);
 
     public Task<MapObjectInfo?> GetInfoAsync(Guid mapObjectId, CancellationToken ct) =>
-        db.Set<MapObject>()
-            .AsNoTracking()
-            .Where(mapObject => mapObject.Id == mapObjectId)
-            .Select(mapObject => new MapObjectInfo(
-                mapObject.Id,
-                mapObject.IsActive,
-                mapObject.GroupId))
-            .FirstOrDefaultAsync(ct);
+        (from mapObject in db.Set<MapObject>().AsNoTracking()
+         join objectType in db.Set<ObjectType>().AsNoTracking()
+             on mapObject.ObjectTypeId equals (Guid?)objectType.Id into types
+         from objectType in types.DefaultIfEmpty()
+         where mapObject.Id == mapObjectId
+         select new MapObjectInfo(
+             mapObject.Id,
+             mapObject.IsActive,
+             mapObject.GroupId,
+             objectType == null ? null : (Guid?)objectType.CategoryId))
+        .FirstOrDefaultAsync(ct);
 }

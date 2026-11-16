@@ -329,11 +329,14 @@ export class MapObjectEdit {
       limit: 20,
     });
     return {
-      items: page.items.map((source) => ({
-        value: source.id,
-        label: source.name,
-        hint: `${SOURCE_TYPE_LABEL[source.sourceType]} · ${source.chatId}`,
-      })),
+      items: page.items
+        // «Сайт» доступен фиксациям неявно: привязывать его нельзя.
+        .filter((source) => source.sourceType !== 'site')
+        .map((source) => ({
+          value: source.id,
+          label: source.name,
+          hint: `${SOURCE_TYPE_LABEL[source.sourceType]} · ${source.chatId}`,
+        })),
       nextCursor: page.nextCursor,
     };
   };

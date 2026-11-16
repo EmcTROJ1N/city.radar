@@ -87,11 +87,15 @@ const API_FIELDS = [
       <div class="row">
         <div class="field grow">
           <label for="sf-type">Тип</label>
-          <select id="sf-type" formControlName="sourceType">
-            @for (option of types; track option.value) { <option [value]="option.value">{{ option.label }}</option> }
-          </select>
-          @if (f.sourceType.value === 'telegram_chat') {
-            <span class="hint">Сообщения читает Telegram-бот: добавьте его в этот чат.</span>
+          @if (isSite()) {
+            <span class="sys">Системный источник «Сайт» — создаётся вместе с категорией.</span>
+          } @else {
+            <select id="sf-type" formControlName="sourceType">
+              @for (option of types; track option.value) { <option [value]="option.value">{{ option.label }}</option> }
+            </select>
+            @if (f.sourceType.value === 'telegram_chat') {
+              <span class="hint">Сообщения читает Telegram-бот: добавьте его в этот чат.</span>
+            }
           }
           <app-field-error [error]="error()" field="sourceType" />
         </div>
@@ -109,13 +113,15 @@ const API_FIELDS = [
         </div>
       </div>
 
-      <div class="field">
-        <label for="sf-chat">Идентификатор чата</label>
-        <input id="sf-chat" formControlName="chatId" autocomplete="off" [placeholder]="chatHint()" />
-        <span class="hint">{{ chatHint() }}</span>
-        <app-field-error [error]="error()" field="chatId" />
-        @if (localError(f.chatId); as message) { <span class="err">{{ message }}</span> }
-      </div>
+      @if (!isSite()) {
+        <div class="field">
+          <label for="sf-chat">Идентификатор чата</label>
+          <input id="sf-chat" formControlName="chatId" autocomplete="off" [placeholder]="chatHint()" />
+          <span class="hint">{{ chatHint() }}</span>
+          <app-field-error [error]="error()" field="chatId" />
+          @if (localError(f.chatId); as message) { <span class="err">{{ message }}</span> }
+        </div>
+      }
 
       @if (creating()) {
         <fieldset class="st-block">
@@ -172,47 +178,49 @@ const API_FIELDS = [
         </fieldset>
       }
 
-      <div class="field">
-        <label for="sf-prompt">Промпт-фильтр</label>
-        <textarea id="sf-prompt" formControlName="userPrompt"
-          placeholder="Ищи в чате все упоминания про подачу и прекращение подачи воды"></textarea>
-        <span class="hint">К промпту автоматически добавляется системный: контекст задачи, список статусов и формат ответа. Его нельзя изменить.</span>
-        <app-field-error [error]="error()" field="userPrompt" />
-        @if (localError(f.userPrompt); as message) { <span class="err">{{ message }}</span> }
-      </div>
-
-      <div class="row link-row">
-        <label class="row">
-          <input type="checkbox" formControlName="linkByText" />
-          Определять фиксацию по тексту сообщения
-        </label>
-        <app-hint text="Для чата, который пишет про несколько мест. Включено: статус получит только место, названное в сообщении. Выключено: все привязанные места. Для одного места не влияет." />
-      </div>
-
-      <details class="more">
-        <summary>Дополнительно</summary>
-        <div class="stack">
-          <div class="field">
-            <label for="sf-confidence">Порог уверенности</label>
-            <input id="sf-confidence" type="number" min="0" max="1" step="0.05" formControlName="confidenceThreshold" />
-            <span class="hint">От 0 до 1. Пусто — значение из глобальных настроек.</span>
-            <app-field-error [error]="error()" field="confidenceThreshold" />
-            @if (localError(f.confidenceThreshold); as message) { <span class="err">{{ message }}</span> }
-          </div>
-          <div class="field">
-            <label for="sf-keywords">Ключевые слова</label>
-            <input id="sf-keywords" formControlName="keywords" placeholder="вода, отключение, колонка" />
-            <span class="hint">Через запятую. Дешёвый префильтр до обращения к LLM.</span>
-            <app-field-error [error]="error()" field="prefilter.keywords" />
-          </div>
-          <div class="field">
-            <label for="sf-regex">Регулярные выражения</label>
-            <textarea id="sf-regex" formControlName="regex" placeholder="вод[аы]"></textarea>
-            <span class="hint">По одному выражению на строку.</span>
-            <app-field-error [error]="error()" field="prefilter.regex" />
-          </div>
+      @if (!isSite()) {
+        <div class="field">
+          <label for="sf-prompt">Промпт-фильтр</label>
+          <textarea id="sf-prompt" formControlName="userPrompt"
+            placeholder="Ищи в чате все упоминания про подачу и прекращение подачи воды"></textarea>
+          <span class="hint">К промпту автоматически добавляется системный: контекст задачи, список статусов и формат ответа. Его нельзя изменить.</span>
+          <app-field-error [error]="error()" field="userPrompt" />
+          @if (localError(f.userPrompt); as message) { <span class="err">{{ message }}</span> }
         </div>
-      </details>
+
+        <div class="row link-row">
+          <label class="row">
+            <input type="checkbox" formControlName="linkByText" />
+            Определять фиксацию по тексту сообщения
+          </label>
+          <app-hint text="Для чата, который пишет про несколько мест. Включено: статус получит только место, названное в сообщении. Выключено: все привязанные места. Для одного места не влияет." />
+        </div>
+
+        <details class="more">
+          <summary>Дополнительно</summary>
+          <div class="stack">
+            <div class="field">
+              <label for="sf-confidence">Порог уверенности</label>
+              <input id="sf-confidence" type="number" min="0" max="1" step="0.05" formControlName="confidenceThreshold" />
+              <span class="hint">От 0 до 1. Пусто — значение из глобальных настроек.</span>
+              <app-field-error [error]="error()" field="confidenceThreshold" />
+              @if (localError(f.confidenceThreshold); as message) { <span class="err">{{ message }}</span> }
+            </div>
+            <div class="field">
+              <label for="sf-keywords">Ключевые слова</label>
+              <input id="sf-keywords" formControlName="keywords" placeholder="вода, отключение, колонка" />
+              <span class="hint">Через запятую. Дешёвый префильтр до обращения к LLM.</span>
+              <app-field-error [error]="error()" field="prefilter.keywords" />
+            </div>
+            <div class="field">
+              <label for="sf-regex">Регулярные выражения</label>
+              <textarea id="sf-regex" formControlName="regex" placeholder="вод[аы]"></textarea>
+              <span class="hint">По одному выражению на строку.</span>
+              <app-field-error [error]="error()" field="prefilter.regex" />
+            </div>
+          </div>
+        </details>
+      }
 
       <app-form-error [error]="error()" [fields]="apiFields" />
 
@@ -233,6 +241,7 @@ const API_FIELDS = [
     .more summary { cursor: pointer; font-weight: 500; color: var(--ink-2); }
     .more .stack { margin-top: 10px; }
     .link-row { flex-wrap: nowrap; }
+    .sys { display: inline-flex; align-items: center; min-height: var(--control-h); color: var(--ink-2); font-size: 14px; }
     .err { color: var(--st-none); font-size: 12px; }
   `,
 })
@@ -267,6 +276,7 @@ export class SourceForm {
 
   protected readonly f = this.form.controls;
   protected readonly creating = computed(() => this.source() === null);
+  protected readonly isSite = computed(() => this.source()?.sourceType === 'site');
   protected readonly error = signal<ApiError | null>(null);
   protected readonly saving = signal(false);
   protected readonly definitions = signal<StatusDefinition[]>([]);
@@ -379,8 +389,29 @@ export class SourceForm {
     this.error.set(null);
     this.form.reset();
     this.form.patchValue(source ? sourceToForm(source) : emptySourceForm());
+    this.applySourceValidators(source?.sourceType === 'site');
     this.form.controls.statuses.clear();
     if (!source) this.addStatus();
+  }
+
+  /**
+   * У системного «Сайта» нет чата и промпта: скрытые поля не должны блокировать сохранение
+   * названия и таймаута.
+   */
+  private applySourceValidators(site: boolean): void {
+    const chat = this.form.controls.chatId;
+    const prompt = this.form.controls.userPrompt;
+
+    if (site) {
+      chat.clearValidators();
+      prompt.clearValidators();
+    } else {
+      chat.setValidators([Validators.required]);
+      prompt.setValidators([Validators.required]);
+    }
+
+    chat.updateValueAndValidity({ emitEvent: false });
+    prompt.updateValueAndValidity({ emitEvent: false });
   }
 
   private newStatus(value: SourceStatusFormValue): FormGroup<StatusControls> {

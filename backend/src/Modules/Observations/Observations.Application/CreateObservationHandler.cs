@@ -122,13 +122,22 @@ public sealed class CreateObservationHandler(
                 "Неактивную фиксацию отметить нельзя");
         }
 
-        var sourceIds = await mapObjects.GetSourceIdsAsync(command.MapObjectId, ct);
+        var sourceIds = new HashSet<Guid>(await mapObjects.GetSourceIdsAsync(command.MapObjectId, ct));
+        if (objectInfo.CategoryId is { } categoryId)
+        {
+            // «Сайт» доступен фиксации неявно, без записи в map_object_sources.
+            if (await sources.GetSiteSourceIdAsync(categoryId, ct) is { } siteSourceId)
+            {
+                sourceIds.Add(siteSourceId);
+            }
+        }
+
         if (sourceIds.Count == 0)
         {
             throw new ObservationRequestException(
                 409,
                 "sourceId",
-                "У фиксации нет источников: отметить её нельзя");
+                "У фиксации не задан тип, отметить её нельзя");
         }
 
         if (!sourceIds.Contains(command.SourceId))
@@ -136,7 +145,7 @@ public sealed class CreateObservationHandler(
             throw new ObservationRequestException(
                 422,
                 "sourceId",
-                "Источник не привязан к фиксации");
+                "Источник недоступен для этой фиксации");
         }
 
         var policy = await sources.GetPolicyAsync(command.SourceId, ct);

@@ -116,10 +116,11 @@ export interface paths {
         put?: never;
         /**
          * Ручная отметка статуса
-         * @description Пользователь выбирает один из источников фиксации и статус из списка этого
-         *     источника. Срок актуальности берётся из таймаута источника. Отметка влияет на
-         *     текущий статус наравне с остальными: побеждает самое свежее наблюдение.
-         *     Фиксацию без источников отметить нельзя.
+         * @description Пользователь выбирает статус источника фиксации. Если у фиксации есть системный
+         *     «Сайт» её категории, отметка по умолчанию идёт по нему; модератор может отметить
+         *     и по привязанному чату. Срок актуальности берётся из таймаута источника. Отметка
+         *     влияет на текущий статус наравне с остальными: побеждает самое свежее наблюдение.
+         *     Фиксацию без типа отметить нельзя (409): у неё нет категории, а значит и «Сайта».
          */
         post: operations["createObservation"];
         delete?: never;
@@ -140,7 +141,8 @@ export interface paths {
         put?: never;
         /**
          * Создать источник со статусами
-         * @description Источник создаётся вместе со списком статусов (минимум один).
+         * @description Источник создаётся вместе со списком статусов (минимум один). Системный «Сайт»
+         *     так не создаётся — он появляется только вместе с категорией (422 по `sourceType`).
          */
         post: operations["createSource"];
         delete?: never;
@@ -169,7 +171,9 @@ export interface paths {
         post?: never;
         /**
          * Удалить источник
-         * @description Удаляется только источник без наблюдений. Иначе 409 — отключите источник (`/sources/{id}/disable`).
+         * @description Удаляется только источник без наблюдений. Иначе 409 — отключите источник
+         *     (`/sources/{id}/disable`). Системный «Сайт» удалить нельзя (409): он удаляется
+         *     только вместе с категорией.
          */
         delete: operations["deleteSource"];
         options?: never;
@@ -876,7 +880,7 @@ export interface components {
         /** @enum {string} */
         CoverageKind: "point" | "polygon";
         /** @enum {string} */
-        SourceType: "telegram_chat" | "max_chat";
+        SourceType: "telegram_chat" | "max_chat" | "site";
         /** @enum {string} */
         ObservationSourceType: "manual" | "moderator" | "telegram" | "max";
         /**
@@ -1183,6 +1187,12 @@ export interface components {
             id: string;
             name: components["schemas"]["NonEmptyText"];
             sourceType: components["schemas"]["SourceType"];
+            /**
+             * Format: uuid
+             * @description Категория системного источника «Сайт»; у источников-чатов `null`.
+             *     «Сайт» создаётся вместе с категорией и доступен фиксациям неявно.
+             */
+            categoryId?: string | null;
             /** @description Идентификатор или ссылка на чат (зависит от типа) */
             chatId: string;
             /** @description Таймаут актуальности наблюдений */
@@ -2059,6 +2069,7 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
             422: components["responses"]["ValidationError"];
             429: components["responses"]["TooManyRequests"];
         };
@@ -3356,6 +3367,7 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            422: components["responses"]["ValidationError"];
         };
     };
     unbindSource: {
