@@ -1,4 +1,4 @@
-# Локальный стек «одной командой»: PostGIS, Redis, Api, фронтенд на nginx и (по профилю) Worker.
+# Локальный стек «одной командой»: PostGIS, Redis, Api, Worker сбора и фронтенд на nginx.
 #
 #   docker compose up -d --build     # весь проект → http://localhost:4200
 #   docker compose down              # остановить, данные БД остаются в томе pgdata
@@ -86,7 +86,7 @@ services:
       Jwt__Audience: ${JWT_AUDIENCE:-mayak}
       Jwt__AccessTokenMinutes: ${JWT_ACCESS_TOKEN_MINUTES:-15}
       Jwt__RefreshTokenDays: ${JWT_REFRESH_TOKEN_DAYS:-30}
-      DevAuth__Password: ${DEV_AUTH_PASSWORD:-mayak-dev}
+      DevAuth__Password: "${DEV_AUTH_PASSWORD:-Mayak-Adm1n!2026#V0da}"
     volumes:
       - dev-secrets:/run/secrets:ro
     ports:
@@ -102,10 +102,9 @@ services:
     init: true
     restart: unless-stopped
 
-  # Сбор и разбор источников. Нужны настроенные источники/LLM, поэтому по умолчанию выключен:
-  #   docker compose --profile ingestion up -d --build
+  # Сбор и разбор источников. Запускается вместе со всем стеком; без настроенных
+  # источников/LLM он просто пишет ошибки в health источников, но не падает.
   ingestion-worker:
-    profiles: ["ingestion"]
     build:
       context: ./backend
       dockerfile: src/Host/IngestionWorker.Host/Dockerfile

@@ -49,20 +49,17 @@ datasets/   примеры датасета для оценки качества
 docker compose up -d --build
 ```
 
-Поднимаются PostGIS, Redis, Api, собранный фронтенд на nginx и одноразовый шаг генерации
-dev-секретов. Портал — **http://localhost:4201** (nginx раздаёт Angular и проксирует `/api/` в Api),
-Api напрямую — http://localhost:5178 (`/health`).
+Поднимаются PostGIS, Redis, Api, Worker сбора источников, собранный фронтенд на nginx и одноразовый
+шаг генерации dev-секретов. Портал — **http://localhost:4201** (nginx раздаёт Angular и проксирует
+`/api/` в Api), Api напрямую — http://localhost:5178 (`/health`).
 
 Контейнеры работают в `ASPNETCORE_ENVIRONMENT=Development`: Api сам применяет миграции при старте,
-включены dev-сиды и dev-логин (`admin` / `moderator` / `user`, пароль `mayak-dev`). Мастер-ключ
+включены dev-сиды и dev-логин (`admin` / `moderator` / `user`, пароль `Mayak-Adm1n!2026#V0da`). Мастер-ключ
 шифрования и ключ подписи JWT генерируются один раз в томе `dev-secrets` — они общие для Api и
 Worker и переживают перезапуск контейнеров.
 
-Воркер сбора источников вынесен за профиль `ingestion` (ему нужны настроенные Telegram/LLM):
-
-```bash
-docker compose --profile ingestion up -d --build
-```
+Worker поднимается вместе со стеком: без настроенных Telegram/LLM он не падает, а пишет ошибку
+в health каждого источника. Логи — `docker compose logs -f ingestion-worker`.
 
 Остановка и очистка:
 
@@ -119,7 +116,7 @@ npm start                                    # http://localhost:4200, /api/v1 п
 
 На странице «Вход» есть блок только для Development. Логин — MAX ID пользователя из базы
 (`900000005`) или `admin` / `moderator` / `user`, пароль — `DevAuth:Password` из
-`appsettings.Development.json` (`mayak-dev`). В production-сборке блока нет, а `/auth/dev-login`
+`appsettings.Development.json` (`Mayak-Adm1n!2026#V0da`). В production-сборке блока нет, а `/auth/dev-login`
 не зарегистрирован.
 
 ### Воркер (опционально)
