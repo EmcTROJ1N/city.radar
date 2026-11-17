@@ -6,12 +6,29 @@ import type {
   SourceState,
   SourceType,
   StatusColor,
+  TelegramMode,
 } from '../api/types';
 
 export const SOURCE_TYPE_LABEL: Record<SourceType, string> = {
   telegram_chat: 'Telegram-чат',
   max_chat: 'MAX-чат',
   site: 'Сайт',
+};
+
+export const TELEGRAM_MODE_LABEL: Record<TelegramMode, string> = {
+  bot: 'Telegram-бот (Bot API)',
+  userbot: 'Аккаунт Telegram (MTProto)',
+};
+
+export const TELEGRAM_MODE_SHORT: Record<TelegramMode, string> = {
+  bot: 'Бот',
+  userbot: 'MTProto',
+};
+
+export const TELEGRAM_MODE_HINT: Record<TelegramMode, string> = {
+  bot: 'Бот состоит в чате и читает свои чаты. Подключение — токен от @BotFather.',
+  userbot:
+    'Аккаунт читает сторонние группы от своего имени. Подключение — api_id, api_hash и сохранённая сессия.',
 };
 
 export const OBSERVATION_SOURCE_LABEL: Record<ObservationSourceType, string> = {

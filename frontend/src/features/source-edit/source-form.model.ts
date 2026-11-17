@@ -6,8 +6,13 @@ import type {
   SourceType,
   SourceUpdate,
   StatusColor,
+  TelegramMode,
 } from '@shared/api/types';
-import { SOURCE_TYPE_LABEL, STATUS_COLOR_LABEL } from '@shared/lib/labels';
+import {
+  SOURCE_TYPE_LABEL,
+  STATUS_COLOR_LABEL,
+  TELEGRAM_MODE_LABEL,
+} from '@shared/lib/labels';
 import { slugCode } from '@shared/lib/code';
 import { normalizeIcon, type IconName } from '@shared/ui/icon';
 
@@ -27,6 +32,12 @@ export type TimeoutUnit = (typeof TIMEOUT_UNITS)[number]['value'];
 export const SOURCE_TYPE_OPTIONS: { value: SourceType; label: string }[] = [
   { value: 'telegram_chat', label: SOURCE_TYPE_LABEL.telegram_chat },
   { value: 'max_chat', label: SOURCE_TYPE_LABEL.max_chat },
+];
+
+/** Способы чтения Telegram: бот для своих чатов, MTProto для сторонних групп. */
+export const TELEGRAM_MODE_OPTIONS: { value: TelegramMode; label: string }[] = [
+  { value: 'bot', label: TELEGRAM_MODE_LABEL.bot },
+  { value: 'userbot', label: TELEGRAM_MODE_LABEL.userbot },
 ];
 
 /** Фильтр списка знает и системный тип: «Сайт» создаётся только вместе с категорией. */
@@ -51,6 +62,7 @@ export const STATUS_ICON_OPTIONS: { value: IconName; label: string }[] = [
 export interface SourceFormValue {
   name: string;
   sourceType: SourceType;
+  mode: TelegramMode;
   chatId: string;
   timeoutAmount: number;
   timeoutUnit: TimeoutUnit;
@@ -114,6 +126,7 @@ export function emptySourceForm(): SourceFormValue {
   return {
     name: '',
     sourceType: 'telegram_chat',
+    mode: 'bot',
     chatId: '',
     timeoutAmount: timeout.amount,
     timeoutUnit: timeout.unit,
@@ -141,6 +154,7 @@ export function sourceToForm(source: Source): SourceFormValue {
   return {
     name: source.name,
     sourceType: source.sourceType,
+    mode: source.mode ?? 'bot',
     chatId: source.chatId,
     timeoutAmount: timeout.amount,
     timeoutUnit: timeout.unit,
@@ -164,7 +178,7 @@ export function statusToForm(status: SourceStatus): SourceStatusFormValue {
 }
 
 export function formToUpdate(value: SourceFormValue): SourceUpdate {
-  return {
+  const body: SourceUpdate = {
     name: value.name.trim(),
     sourceType: value.sourceType,
     chatId: value.chatId.trim(),
@@ -174,6 +188,11 @@ export function formToUpdate(value: SourceFormValue): SourceUpdate {
     userPrompt: value.userPrompt.trim(),
     linkByText: value.linkByText,
   };
+
+  // Режим относится только к Telegram; у MAX и системного «Сайта» поля нет.
+  if (value.sourceType === 'telegram_chat') body.mode = value.mode;
+
+  return body;
 }
 
 export function formToStatusInput(

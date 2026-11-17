@@ -35,23 +35,37 @@ internal sealed partial class SecretValidationService(MayakDbContext db, ISecret
     private const string TelegramApiBase = "https://api.telegram.org";
 
     /// <summary>
-    /// Проверяет токен Telegram-бота через <c>getMe</c>. Строки, не похожие на bot-токен,
-    /// считаются сессией MTProto и не проверяются Bot API: UI этой версии работает только
-    /// с ботами, а API сохраняет совместимость с юзерботом.
+    /// Проверяет Telegram-секрет с учётом выбранного способа входа. Токен бота проверяется
+    /// запросом <c>getMe</c>; JSON-сессия MTProto проверяется по структуре и не обращается
+    /// к Bot API. Если способ не задан, он определяется по формату значения.
     /// </summary>
-    /// <param name="session">Токен бота или строка MTProto-сессии.</param>
+    /// <param name="session">Токен бота или JSON-сессия MTProto.</param>
+    /// <param name="mode">Способ входа: <c>bot</c>, <c>userbot</c> или <c>null</c>.</param>
     /// <param name="proxyId">Прокси, назначенный аккаунту; проверка пойдёт только через него.</param>
     /// <param name="ct">Токен отмены.</param>
-    /// <returns>Ошибка поля или <c>null</c>, если токен принят Telegram.</returns>
+    /// <returns>Ошибка поля или <c>null</c>, если значение принято.</returns>
     public async Task<ValidationError?> ValidateTelegramSessionAsync(
         string session,
+        string? mode,
         Guid? proxyId,
         CancellationToken ct)
     {
-        // MTProto-сессия — не bot-токен; getMe к ней неприменим.
-        if (!session.Contains(':', StringComparison.Ordinal))
+        var effectiveMode = string.IsNullOrWhiteSpace(mode)
+            ? TelegramSessionFormat.Detect(session)
+            : mode;
+
+        if (string.Equals(effectiveMode, TelegramSecretModes.Userbot, StringComparison.Ordinal))
         {
-            return null;
+            var mtProtoError = TelegramSessionFormat.ValidateMtProto(session);
+
+            return mtProtoError is null ? null : new ValidationError("session", mtProtoError);
+        }
+
+        if (TelegramSessionFormat.LooksLikeMtProto(session))
+        {
+            return new ValidationError(
+                "session",
+                "Это JSON-сессия MTProto. Выберите способ входа «Аккаунт Telegram (MTProto)».");
         }
 
         if (!BotTokenPattern().IsMatch(session))

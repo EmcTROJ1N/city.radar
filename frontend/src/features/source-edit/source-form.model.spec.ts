@@ -78,6 +78,7 @@ describe('маппинг формы', () => {
     expect(sourceToForm(SOURCE)).toEqual({
       name: 'Чат жильцов Калининского',
       sourceType: 'telegram_chat',
+      mode: 'bot',
       chatId: '@kalininsky_water',
       timeoutAmount: 6,
       timeoutUnit: 'hour',
@@ -102,6 +103,7 @@ describe('маппинг формы', () => {
       formToUpdate({
         name: '  Чат  ',
         sourceType: 'max_chat',
+        mode: 'bot',
         chatId: '  max-1  ',
         timeoutAmount: 2,
         timeoutUnit: 'day',
@@ -121,6 +123,20 @@ describe('маппинг формы', () => {
       userPrompt: 'Ищи воду',
       linkByText: true,
     });
+  });
+
+  it('передаёт способ чтения только у Telegram-источника', () => {
+    const base = {
+      ...emptySourceForm(),
+      name: 'Чат',
+      chatId: '@chat',
+      userPrompt: 'Ищи воду',
+    };
+
+    expect(formToUpdate({ ...base, sourceType: 'telegram_chat', mode: 'userbot' }))
+      .toMatchObject({ sourceType: 'telegram_chat', mode: 'userbot' });
+    expect(formToUpdate({ ...base, sourceType: 'max_chat', mode: 'userbot' }))
+      .not.toHaveProperty('mode');
   });
 
   it('добавляет статусы при создании и подставляет код из названия', () => {

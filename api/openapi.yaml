@@ -1632,6 +1632,12 @@ components:
     SourceType:
       type: string
       enum: [telegram_chat, max_chat, site]
+    TelegramMode:
+      type: string
+      description: |
+        Способ чтения Telegram-источника: `bot` — Telegram Bot API (бот состоит в чате),
+        `userbot` — аккаунт Telegram через MTProto (читает сторонние группы).
+      enum: [bot, userbot]
     ObservationSourceType:
       type: string
       enum: [manual, moderator, telegram, max]
@@ -1886,6 +1892,14 @@ components:
       properties:
         name: { $ref: '#/components/schemas/NonEmptyText' }
         sourceType: { $ref: '#/components/schemas/SourceType' }
+        mode:
+          oneOf:
+            - $ref: '#/components/schemas/TelegramMode'
+            - type: 'null'
+          description: |
+            Способ чтения Telegram. Для `telegram_chat` на создании по умолчанию `bot`;
+            на изменении отсутствие поля сохраняет текущий способ. Для других типов
+            источников не задаётся.
         chatId:
           type: string
           description: Идентификатор или ссылка на чат (зависит от типа)
@@ -1917,6 +1931,14 @@ components:
       properties:
         name: { $ref: '#/components/schemas/NonEmptyText' }
         sourceType: { $ref: '#/components/schemas/SourceType' }
+        mode:
+          oneOf:
+            - $ref: '#/components/schemas/TelegramMode'
+            - type: 'null'
+          description: |
+            Способ чтения Telegram. Для `telegram_chat` на создании по умолчанию `bot`;
+            на изменении отсутствие поля сохраняет текущий способ. Для других типов
+            источников не задаётся.
         chatId:
           type: string
           description: Идентификатор или ссылка на чат (зависит от типа)
@@ -1971,6 +1993,12 @@ components:
         id: { type: string, format: uuid }
         name: { $ref: '#/components/schemas/NonEmptyText' }
         sourceType: { $ref: '#/components/schemas/SourceType' }
+        mode:
+          oneOf:
+            - $ref: '#/components/schemas/TelegramMode'
+            - type: 'null'
+          description: |
+            Способ чтения Telegram-источника; `null` для MAX и системного «Сайта».
         categoryId:
           type: [string, 'null']
           format: uuid
@@ -2215,6 +2243,13 @@ components:
         id: { type: string, format: uuid }
         kind: { $ref: '#/components/schemas/SecretKind' }
         name: { type: string }
+        mode:
+          oneOf:
+            - $ref: '#/components/schemas/TelegramMode'
+            - type: 'null'
+          description: |
+            Для секрета вида `telegram_session` — способ входа (`bot` — токен бота,
+            `userbot` — JSON-сессия MTProto). Для прокси и LLM — `null`.
         proxyId: { type: [string, 'null'], format: uuid, description: "Прокси, назначенный аккаунту Telegram или LLM" }
         updatedAt: { type: string, format: date-time }
     TelegramSessionSecret:
@@ -2223,7 +2258,15 @@ components:
       additionalProperties: false
       properties:
         name: { type: string, minLength: 1, description: Название записи в списке }
-        session: { type: string, writeOnly: true, minLength: 1, description: Токен Telegram-бота (Bot API) }
+        mode:
+          $ref: '#/components/schemas/TelegramMode'
+        session:
+          type: string
+          writeOnly: true
+          minLength: 1
+          description: |
+            Токен Telegram-бота (Bot API) или JSON-сессия MTProto
+            `{apiId, apiHash, sessionData, phone?}`.
         proxyId: { type: [string, 'null'], format: uuid }
     ProxySecret:
       type: object

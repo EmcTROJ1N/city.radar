@@ -10,8 +10,9 @@ import {
 import { SourcesApi } from '@entities/source';
 import { StatusDefinitionsApi } from '@entities/status-definition';
 import { ApiError, toApiError } from '@shared/api/api-error';
-import type { Source, SourceType, StatusColor, StatusDefinition } from '@shared/api/types';
+import type { Source, SourceType, StatusColor, StatusDefinition, TelegramMode } from '@shared/api/types';
 import { slugCode } from '@shared/lib/code';
+import { TELEGRAM_MODE_HINT } from '@shared/lib/labels';
 import { FieldError } from '@shared/ui/field-error';
 import { FormError } from '@shared/ui/form-error';
 import { Hint } from '@shared/ui/hint';
@@ -22,6 +23,7 @@ import {
   SOURCE_TYPE_OPTIONS,
   STATUS_COLOR_OPTIONS,
   STATUS_ICON_OPTIONS,
+  TELEGRAM_MODE_OPTIONS,
   SourceFormValue,
   SourceStatusFormValue,
   TIMEOUT_UNITS,
@@ -45,6 +47,7 @@ interface StatusControls {
 interface SourceControls {
   name: FormControl<string>;
   sourceType: FormControl<SourceType>;
+  mode: FormControl<TelegramMode>;
   chatId: FormControl<string>;
   timeoutAmount: FormControl<number>;
   timeoutUnit: FormControl<TimeoutUnit>;
@@ -59,6 +62,7 @@ interface SourceControls {
 const API_FIELDS = [
   'name',
   'sourceType',
+  'mode',
   'chatId',
   'timeoutSeconds',
   'confidenceThreshold',
@@ -93,9 +97,6 @@ const API_FIELDS = [
             <select id="sf-type" formControlName="sourceType">
               @for (option of types; track option.value) { <option [value]="option.value">{{ option.label }}</option> }
             </select>
-            @if (f.sourceType.value === 'telegram_chat') {
-              <span class="hint">Сообщения читает Telegram-бот: добавьте его в этот чат.</span>
-            }
           }
           <app-field-error [error]="error()" field="sourceType" />
         </div>
@@ -112,6 +113,28 @@ const API_FIELDS = [
           @if (localError(f.timeoutAmount, 'Укажите таймаут'); as message) { <span class="err">{{ message }}</span> }
         </div>
       </div>
+
+      @if (!isSite() && f.sourceType.value === 'telegram_chat') {
+        <div class="field">
+          <span>Способ подключения Telegram</span>
+          <div class="segmented mode-switch" role="group" aria-label="Способ подключения Telegram">
+            @for (option of telegramModes; track option.value) {
+              <button
+                type="button"
+                [attr.aria-pressed]="f.mode.value === option.value"
+                (click)="f.mode.setValue(option.value)"
+              >
+                {{ option.label }}
+              </button>
+            }
+          </div>
+          <span class="hint">{{ modeHint() }}</span>
+          @if (!creating()) {
+            <span class="hint">При смене способа назначенная Telegram-сессия снимается — выберите новую в админке.</span>
+          }
+          <app-field-error [error]="error()" field="mode" />
+        </div>
+      }
 
       @if (!isSite()) {
         <div class="field">
@@ -241,6 +264,7 @@ const API_FIELDS = [
     .more summary { cursor: pointer; font-weight: 500; color: var(--ink-2); }
     .more .stack { margin-top: 10px; }
     .link-row { flex-wrap: nowrap; }
+    .mode-switch { flex-wrap: wrap; }
     .sys { display: inline-flex; align-items: center; min-height: var(--control-h); color: var(--ink-2); font-size: 14px; }
     .err { color: var(--st-none); font-size: 12px; }
   `,
@@ -255,6 +279,7 @@ export class SourceForm {
   readonly cancelled = output<void>();
 
   protected readonly types = SOURCE_TYPE_OPTIONS;
+  protected readonly telegramModes = TELEGRAM_MODE_OPTIONS;
   protected readonly units = TIMEOUT_UNITS;
   protected readonly colors = STATUS_COLOR_OPTIONS;
   protected readonly icons = STATUS_ICON_OPTIONS;
@@ -263,6 +288,7 @@ export class SourceForm {
   protected readonly form = new FormGroup<SourceControls>({
     name: new FormControl('', { nonNullable: true, validators: [Validators.required] }),
     sourceType: new FormControl<SourceType>('telegram_chat', { nonNullable: true, validators: [Validators.required] }),
+    mode: new FormControl<TelegramMode>('bot', { nonNullable: true, validators: [Validators.required] }),
     chatId: new FormControl('', { nonNullable: true, validators: [Validators.required] }),
     timeoutAmount: new FormControl(6, { nonNullable: true, validators: [Validators.required, Validators.min(1)] }),
     timeoutUnit: new FormControl<TimeoutUnit>('hour', { nonNullable: true, validators: [Validators.required] }),
@@ -287,6 +313,8 @@ export class SourceForm {
       ? 'Telegram — @username, числовой ID (например, -1001234567890) или ссылка t.me/…'
       : 'MAX — идентификатор чата MAX',
   );
+
+  protected readonly modeHint = computed(() => TELEGRAM_MODE_HINT[this.f.mode.value]);
 
   private currentId: string | null | undefined;
   private definitionsLoaded = false;

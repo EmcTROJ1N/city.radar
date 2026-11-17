@@ -31,6 +31,7 @@ export type SourceHealth = Schemas['SourceHealth'];
 export type SourceStatus = Schemas['SourceStatus'];
 export type SourceStatusInput = Schemas['SourceStatusInput'];
 export type SourceType = Schemas['SourceType'];
+export type TelegramMode = Schemas['TelegramMode'];
 export type SourceState = Schemas['SourceState'];
 export type ObservationSourceType = Schemas['ObservationSourceType'];
 export type SourceConnection = Schemas['SourceConnection'];

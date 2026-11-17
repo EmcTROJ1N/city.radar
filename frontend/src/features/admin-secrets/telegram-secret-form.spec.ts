@@ -7,7 +7,7 @@ import { TelegramSecretForm } from './telegram-secret-form';
 
 const VALID_TOKEN = '123456789:AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw';
 
-function fill(element: HTMLInputElement, value: string): void {
+function fill(element: HTMLInputElement | HTMLTextAreaElement, value: string): void {
   element.value = value;
   element.dispatchEvent(new Event('input'));
 }
@@ -49,6 +49,38 @@ describe('TelegramSecretForm', () => {
     const [id, body] = putTelegramSession.mock.calls[0] as [string, Record<string, unknown>];
     expect(typeof id).toBe('string');
     expect(body).toMatchObject({ name: 'Бот района', session: VALID_TOKEN, proxyId: null });
+  });
+
+  it('сохраняет MTProto-сессию отдельным способом входа', async () => {
+    const fixture = setup();
+    const element = fixture.nativeElement as HTMLElement;
+
+    (element.querySelectorAll<HTMLButtonElement>('.mode-option')[1]!).click();
+    fixture.detectChanges();
+
+    fill(element.querySelector<HTMLInputElement>('#tg-name')!, 'Аккаунт района');
+    fill(element.querySelector<HTMLInputElement>('#tg-api-id')!, '1234567');
+    fill(
+      element.querySelector<HTMLInputElement>('#tg-api-hash')!,
+      '0123456789abcdef0123456789abcdef',
+    );
+    fill(
+      element.querySelector<HTMLTextAreaElement>('#tg-session-data')!,
+      '1BVtsOK4Bu0-test-session-data-value',
+    );
+    fixture.detectChanges();
+
+    element.querySelector('form')!.dispatchEvent(new Event('submit'));
+    await fixture.whenStable();
+
+    expect(putTelegramSession).toHaveBeenCalledTimes(1);
+    const [, body] = putTelegramSession.mock.calls[0] as [string, Record<string, unknown>];
+    expect(body['mode']).toBe('userbot');
+    expect(JSON.parse(body['session'] as string)).toEqual({
+      apiId: 1234567,
+      apiHash: '0123456789abcdef0123456789abcdef',
+      sessionData: '1BVtsOK4Bu0-test-session-data-value',
+    });
   });
 
   it('не отправляет строку, которая не похожа на токен бота', async () => {

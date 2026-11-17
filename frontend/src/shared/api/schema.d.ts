@@ -881,6 +881,12 @@ export interface components {
         CoverageKind: "point" | "polygon";
         /** @enum {string} */
         SourceType: "telegram_chat" | "max_chat" | "site";
+        /**
+         * @description Способ чтения Telegram-источника: `bot` — Telegram Bot API (бот состоит в чате),
+         *     `userbot` — аккаунт Telegram через MTProto (читает сторонние группы).
+         * @enum {string}
+         */
+        TelegramMode: "bot" | "userbot";
         /** @enum {string} */
         ObservationSourceType: "manual" | "moderator" | "telegram" | "max";
         /**
@@ -1083,6 +1089,12 @@ export interface components {
         SourceUpdate: {
             name: components["schemas"]["NonEmptyText"];
             sourceType: components["schemas"]["SourceType"];
+            /**
+             * @description Способ чтения Telegram. Для `telegram_chat` на создании по умолчанию `bot`;
+             *     на изменении отсутствие поля сохраняет текущий способ. Для других типов
+             *     источников не задаётся.
+             */
+            mode?: components["schemas"]["TelegramMode"] | null;
             /** @description Идентификатор или ссылка на чат (зависит от типа) */
             chatId: string;
             /** @description Таймаут актуальности наблюдений */
@@ -1127,6 +1139,12 @@ export interface components {
         SourceCreate: {
             name: components["schemas"]["NonEmptyText"];
             sourceType: components["schemas"]["SourceType"];
+            /**
+             * @description Способ чтения Telegram. Для `telegram_chat` на создании по умолчанию `bot`;
+             *     на изменении отсутствие поля сохраняет текущий способ. Для других типов
+             *     источников не задаётся.
+             */
+            mode?: components["schemas"]["TelegramMode"] | null;
             /** @description Идентификатор или ссылка на чат (зависит от типа) */
             chatId: string;
             /** @description Таймаут актуальности наблюдений */
@@ -1187,6 +1205,8 @@ export interface components {
             id: string;
             name: components["schemas"]["NonEmptyText"];
             sourceType: components["schemas"]["SourceType"];
+            /** @description Способ чтения Telegram-источника; `null` для MAX и системного «Сайта». */
+            mode?: components["schemas"]["TelegramMode"] | null;
             /**
              * Format: uuid
              * @description Категория системного источника «Сайт»; у источников-чатов `null`.
@@ -1379,6 +1399,11 @@ export interface components {
             kind: components["schemas"]["SecretKind"];
             name: string;
             /**
+             * @description Для секрета вида `telegram_session` — способ входа (`bot` — токен бота,
+             *     `userbot` — JSON-сессия MTProto). Для прокси и LLM — `null`.
+             */
+            mode?: components["schemas"]["TelegramMode"] | null;
+            /**
              * Format: uuid
              * @description Прокси, назначенный аккаунту Telegram или LLM
              */
@@ -1389,7 +1414,11 @@ export interface components {
         TelegramSessionSecret: {
             /** @description Название записи в списке */
             name: string;
-            /** @description Токен Telegram-бота (Bot API) */
+            mode?: components["schemas"]["TelegramMode"];
+            /**
+             * @description Токен Telegram-бота (Bot API) или JSON-сессия MTProto
+             *     `{apiId, apiHash, sessionData, phone?}`.
+             */
             session: string;
             /** Format: uuid */
             proxyId?: string | null;

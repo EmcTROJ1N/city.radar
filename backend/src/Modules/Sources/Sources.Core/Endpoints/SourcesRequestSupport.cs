@@ -19,7 +19,7 @@ internal static partial class SourcesRequestSupport
     private static readonly HashSet<string> UpdateFields =
         new(StringComparer.Ordinal)
         {
-            "name", "sourceType", "chatId", "timeoutSeconds", "confidenceThreshold",
+            "name", "sourceType", "mode", "chatId", "timeoutSeconds", "confidenceThreshold",
             "prefilter", "userPrompt", "linkByText",
         };
 
@@ -71,6 +71,7 @@ internal static partial class SourcesRequestSupport
         var name = ReadName(root, errors);
         var sourceType = ReadRequiredString(root, "sourceType", errors);
         var isSite = string.Equals(sourceType, "site", StringComparison.Ordinal);
+        var mode = ReadTelegramMode(root, sourceType, errors);
         var chatId = isSite
             ? ReadOptionalChatId(root, errors)
             : ReadRequiredString(root, "chatId", errors);
@@ -97,8 +98,47 @@ internal static partial class SourcesRequestSupport
                 confidenceThreshold,
                 prefilter,
                 userPrompt!,
-                linkByText)
+                linkByText,
+                mode)
             : null;
+    }
+
+    /// <summary>
+    /// Способ чтения Telegram: <c>bot</c> или <c>userbot</c>. Для <c>telegram_chat</c>
+    /// отсутствующее поле означает <c>bot</c>; для остальных типов режим не задаётся.
+    /// </summary>
+    private static string? ReadTelegramMode(
+        JsonElement root,
+        string? sourceType,
+        List<ValidationError> errors)
+    {
+        var isTelegram = string.Equals(sourceType, "telegram_chat", StringComparison.Ordinal);
+
+        if (!root.TryGetProperty("mode", out var value) || value.ValueKind == JsonValueKind.Null)
+        {
+            // На создании отсутствие режима означает Bot API; на изменении сервис
+            // сохраняет текущий способ чтения, чтобы старые клиенты его не сбросили.
+            return null;
+        }
+
+        if (value.ValueKind != JsonValueKind.String
+            || value.GetString() is not ("bot" or "userbot"))
+        {
+            errors.Add(new ValidationError("mode", "Способ чтения должен быть bot или userbot"));
+
+            return null;
+        }
+
+        if (!isTelegram && sourceType is not null)
+        {
+            errors.Add(new ValidationError(
+                "mode",
+                "Способ чтения Telegram задаётся только для источника telegram_chat"));
+
+            return null;
+        }
+
+        return value.GetString();
     }
 
     /// <summary>
@@ -386,4 +426,5 @@ internal sealed record SourceInput(
     float? ConfidenceThreshold,
     string? Prefilter,
     string UserPrompt,
-    bool LinkByText);
+    bool LinkByText,
+    string? Mode);

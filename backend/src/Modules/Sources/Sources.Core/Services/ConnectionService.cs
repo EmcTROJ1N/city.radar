@@ -1,6 +1,7 @@
+using System.Text.Json;
+
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Web;
-
 using IdentityAccess.Contracts;
 
 using Microsoft.AspNetCore.Http;
@@ -20,10 +21,11 @@ namespace Sources.Core.Services;
 /// указывать на секрет нужного вида. Изменение пишется в аудит и сохраняется одним
 /// <c>SaveChanges</c>.
 /// </summary>
-internal sealed class ConnectionService(MayakDbContext db, IAuditLog audit)
+internal sealed class ConnectionService(MayakDbContext db, IAuditLog audit, SecretStore secrets)
 {
     private const string EntityType = "source";
     private const string TelegramSourceType = "telegram_chat";
+    private const string TelegramBotMode = "bot";
 
     public async Task<IResult> GetAsync(Guid sourceId, CancellationToken ct)
     {
@@ -64,6 +66,20 @@ internal sealed class ConnectionService(MayakDbContext db, IAuditLog audit)
                 errors.Add(new ValidationError(
                     "telegramSessionId",
                     "Секрет должен быть Telegram-сессией"));
+            }
+            else
+            {
+                var secretMode = await secrets.GetTelegramModeAsync(sessionSecretId, ct);
+                var sourceMode = ReadMode(source.Settings);
+
+                if (secretMode is not null
+                    && !string.Equals(secretMode, sourceMode, StringComparison.Ordinal))
+                {
+                    errors.Add(new ValidationError(
+                        "telegramSessionId",
+                        "Способ входа секрета не совпадает со способом чтения источника. "
+                        + "Для MTProto выберите источник с режимом userbot и MTProto-сессию."));
+                }
             }
         }
 
@@ -120,6 +136,31 @@ internal sealed class ConnectionService(MayakDbContext db, IAuditLog audit)
         db.Set<Secret>()
             .AsNoTracking()
             .AnyAsync(secret => secret.Id == secretId && secret.Kind == kind, ct);
+
+    /// <summary>
+    /// Способ чтения источника из <c>settings.mode</c>; отсутствие режима у Telegram
+    /// исторически означало юзербот, но API всегда писал <c>bot</c>, поэтому для UI
+    /// и проверки связки по умолчанию считаем <c>bot</c>.
+    /// </summary>
+    private static string ReadMode(string settings)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(settings);
+
+            if (document.RootElement.TryGetProperty("mode", out var value)
+                && value.ValueKind == JsonValueKind.String)
+            {
+                return value.GetString() ?? TelegramBotMode;
+            }
+        }
+        catch (JsonException)
+        {
+            // Некорректный settings — считаем режим Bot API.
+        }
+
+        return TelegramBotMode;
+    }
 }
 
 /// <summary>Ответ <c>SourceConnection</c>: идентификаторы секретов, без значений.</summary>

@@ -52,21 +52,40 @@ internal sealed class SecretStore(
     /// <summary>Список секретов: вид, название, наличие значения, прокси и время изменения.</summary>
     public async Task<IResult> ListAsync(CancellationToken ct)
     {
-        var secrets = await db.Set<Secret>()
+        var rows = await db.Set<Secret>()
             .AsNoTracking()
             .OrderBy(secret => secret.Kind)
             .ThenBy(secret => secret.Name)
             .ThenBy(secret => secret.Id)
+            .ToListAsync(ct);
+
+        var secrets = rows
             .Select(secret => new SecretMetaResponse(
                 secret.Id,
                 secret.Kind,
                 secret.Name,
                 secret.ProxyId,
                 true,
-                secret.UpdatedAt))
-            .ToListAsync(ct);
+                secret.UpdatedAt,
+                TelegramModeOf(secret)))
+            .ToList();
 
         return Results.Ok(secrets);
+    }
+
+    /// <summary>
+    /// Способ входа Telegram-сессии по расшифрованному значению. Наружу отдаётся только
+    /// метка <c>bot</c>/<c>userbot</c>; само значение не покидает сервер.
+    /// </summary>
+    internal async Task<string?> GetTelegramModeAsync(Guid secretId, CancellationToken ct)
+    {
+        var secret = await db.Set<Secret>()
+            .AsNoTracking()
+            .FirstOrDefaultAsync(
+                item => item.Id == secretId && item.Kind == SecretKinds.TelegramSession,
+                ct);
+
+        return secret is null ? null : TelegramModeOf(secret);
     }
 
     /// <summary>Создаёт или заменяет Telegram-сессию по идентификатору из пути.</summary>
@@ -86,7 +105,7 @@ internal sealed class SecretStore(
         if (ValidateOnSave)
         {
             var validationError = await validator
-                .ValidateTelegramSessionAsync(input.Session, input.ProxyId, ct)
+                .ValidateTelegramSessionAsync(input.Session, input.Mode, input.ProxyId, ct)
                 .ConfigureAwait(false);
 
             if (validationError is not null)
@@ -280,6 +299,33 @@ internal sealed class SecretStore(
             _ => new ValidationError("proxyId", "Секрет должен быть прокси"),
         };
     }
+
+    /// <summary>
+    /// Метка способа входа Telegram-сессии. Ошибка расшифровки не раскрывает значение:
+    /// такая сессия будет считаться ботом, пока её не заменят.
+    /// </summary>
+    private string? TelegramModeOf(Secret secret)
+    {
+        if (!string.Equals(secret.Kind, SecretKinds.TelegramSession, StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        try
+        {
+            var session = Encoding.UTF8.GetString(
+                cipher.Decrypt(secret.Ciphertext, secret.KeyVersion));
+
+            return TelegramSessionFormat.Detect(session);
+        }
+        catch (Exception exception)
+            when (exception is System.Security.Cryptography.CryptographicException
+                or ArgumentException
+                or UnknownKeyVersionException)
+        {
+            return TelegramSecretModes.Bot;
+        }
+    }
 }
 
 /// <summary>Элемент ответа <c>GET /admin/secrets</c> (схема <c>SecretMeta</c>): без значения.</summary>
@@ -289,7 +335,8 @@ internal sealed record SecretMetaResponse(
     string Name,
     Guid? ProxyId,
     bool HasValue,
-    DateTimeOffset UpdatedAt);
+    DateTimeOffset UpdatedAt,
+    string? Mode);
 
 /// <summary>Метаданные изменения секрета для аудита; значения и шифртекст сюда не попадают.</summary>
 internal sealed record SecretAuditView(

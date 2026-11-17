@@ -32,6 +32,7 @@ internal sealed class SourceService(
     private const string SourceTypeField = "sourceType";
     private const string TelegramSourceType = "telegram_chat";
     private const string TelegramBotMode = "bot";
+    private const string TelegramUserbotMode = "userbot";
     private const string SiteSourceType = "site";
 
     /// <summary>Курсорная страница источников с фильтрами контракта.</summary>
@@ -141,7 +142,7 @@ internal sealed class SourceService(
             Id = Guid.NewGuid(),
             Name = input.Name,
             SourceType = input.SourceType,
-            Settings = WriteSettings(input.SourceType, input.ChatId),
+            Settings = WriteSettings(input.SourceType, input.ChatId, input.Mode),
             UserPrompt = input.UserPrompt,
             LinkByText = input.LinkByText,
             IsEnabled = true,
@@ -212,6 +213,16 @@ internal sealed class SourceService(
 
         var oldChatId = ReadChatId(source.Settings);
         var oldMode = ReadMode(source.Settings);
+        // Если клиент не прислал mode и тип не меняется, сохраняем текущий способ чтения:
+        // старые клиенты не должны сбрасывать MTProto в Bot API.
+        var newMode = input.Mode is null
+            && string.Equals(input.SourceType, source.SourceType, StringComparison.Ordinal)
+                ? ModeFor(input.SourceType, oldMode)
+                : ModeFor(input.SourceType, input.Mode);
+        var modeChanged = !string.Equals(
+            ModeFor(source.SourceType, oldMode),
+            newMode,
+            StringComparison.Ordinal);
         var policy = source.Policy;
         if (policy is null)
         {
@@ -232,7 +243,9 @@ internal sealed class SourceService(
         Track(before, after, "name", source.Name, input.Name);
         Track(before, after, "sourceType", source.SourceType, input.SourceType);
         Track(before, after, "chatId", oldChatId, input.ChatId);
-        Track(before, after, "mode", oldMode, ModeFor(input.SourceType));
+        Track(before, after, "mode", oldMode, newMode);
+        var nextSessionId = modeChanged ? null : source.TelegramSessionId;
+        Track(before, after, "telegramSessionId", source.TelegramSessionId, nextSessionId);
         Track(before, after, "timeoutSeconds", timeoutSeconds, input.TimeoutSeconds);
         Track(before, after, "confidenceThreshold", policy.ConfidenceThreshold, input.ConfidenceThreshold);
         Track(before, after, "prefilter", policy.Prefilter, input.Prefilter);
@@ -241,7 +254,8 @@ internal sealed class SourceService(
 
         source.Name = input.Name;
         source.SourceType = input.SourceType;
-        source.Settings = WriteSettings(input.SourceType, input.ChatId);
+        source.Settings = WriteSettings(input.SourceType, input.ChatId, newMode);
+        source.TelegramSessionId = nextSessionId;
         source.UserPrompt = input.UserPrompt;
         source.LinkByText = input.LinkByText;
         policy.Timeout = TimeSpan.FromSeconds(input.TimeoutSeconds);
@@ -523,10 +537,10 @@ internal sealed class SourceService(
     }
 
     /// <summary>
-    /// Настройки источника в <c>sources.settings</c>. Для Telegram в первой версии жёстко
-    /// выставляется режим Bot API: UI умеет только токен бота, а юзербот скрыт.
+    /// Настройки источника в <c>sources.settings</c>. Для Telegram записывается выбранный
+    /// способ чтения: Bot API или MTProto (по умолчанию — Bot API).
     /// </summary>
-    private static string WriteSettings(string sourceType, string chatId)
+    private static string WriteSettings(string sourceType, string chatId, string? mode)
     {
         var settings = new Dictionary<string, string>(StringComparer.Ordinal)
         {
@@ -535,7 +549,7 @@ internal sealed class SourceService(
 
         if (string.Equals(sourceType, TelegramSourceType, StringComparison.Ordinal))
         {
-            settings["mode"] = TelegramBotMode;
+            settings["mode"] = ModeFor(sourceType, mode) ?? TelegramBotMode;
         }
 
         return JsonSerializer.Serialize(settings);
@@ -560,9 +574,11 @@ internal sealed class SourceService(
     }
 
     /// <summary>Режим, который будет записан в <c>settings</c> для данного типа источника.</summary>
-    private static string? ModeFor(string sourceType) =>
+    private static string? ModeFor(string sourceType, string? mode) =>
         string.Equals(sourceType, TelegramSourceType, StringComparison.Ordinal)
-            ? TelegramBotMode
+            ? string.Equals(mode, TelegramUserbotMode, StringComparison.Ordinal)
+                ? TelegramUserbotMode
+                : TelegramBotMode
             : null;
 
     /// <summary>Идентификатор чата из <c>settings</c>; пустая строка, если поле не задано.</summary>
@@ -602,7 +618,8 @@ internal sealed class SourceService(
             source.State,
             source.LastMessageAt,
             source.CreatedAt,
-            statuses);
+            statuses,
+            ModeFor(source.SourceType, ReadMode(source.Settings)));
 
     private static SourceAuditSnapshot ToAuditSnapshot(Source source) =>
         new(
@@ -674,7 +691,8 @@ internal sealed record SourceResponse(
     string State,
     DateTimeOffset? LastMessageAt,
     DateTimeOffset CreatedAt,
-    IReadOnlyList<SourceStatusResponse> Statuses);
+    IReadOnlyList<SourceStatusResponse> Statuses,
+    string? Mode);
 
 /// <summary>Снимок источника для <c>audit_entries.before/after</c>.</summary>
 internal sealed record SourceAuditSnapshot(

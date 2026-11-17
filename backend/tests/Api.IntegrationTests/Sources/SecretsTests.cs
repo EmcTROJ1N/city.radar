@@ -103,6 +103,41 @@ public sealed class SecretsTests(PostgresFixture fixture) : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Telegram_mtproto_session_is_listed_with_userbot_mode()
+    {
+        var ct = CancellationToken.None;
+        var token = await AdminTokenAsync(ct);
+        var secretId = Guid.NewGuid();
+        var session = JsonSerializer.Serialize(new
+        {
+            apiId = 1234567,
+            apiHash = "0123456789abcdef0123456789abcdef",
+            sessionData = $"SESSION-DATA-{CatalogApi.NewSuffix()}",
+            phone = "+79990000000",
+        });
+
+        using (var response = await PutTelegramSessionAsync(
+            token,
+            secretId,
+            $"MTProto {CatalogApi.NewSuffix()}",
+            session,
+            proxyId: null,
+            ct,
+            mode: "userbot"))
+        {
+            response.StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        }
+
+        using var list = await _api.GetAsync(SecretsPath, token, ct);
+        list.StatusCode.ShouldBe(HttpStatusCode.OK);
+
+        var item = (await CatalogApi.ReadJsonAsync(list, ct)).EnumerateArray()
+            .Single(secret => secret.GetProperty("id").GetGuid() == secretId);
+        item.GetProperty("kind").GetString().ShouldBe("telegram_session");
+        item.GetProperty("mode").GetString().ShouldBe("userbot");
+    }
+
+    [Fact]
     public async Task Moderator_gets_403_on_all_secret_endpoints()
     {
         var ct = CancellationToken.None;
@@ -700,13 +735,27 @@ public sealed class SecretsTests(PostgresFixture fixture) : IAsyncLifetime
         string name,
         string session,
         Guid? proxyId,
-        CancellationToken ct) =>
-        _api.SendAsync(
+        CancellationToken ct,
+        string? mode = null)
+    {
+        var body = new Dictionary<string, object?>
+        {
+            ["name"] = name,
+            ["session"] = session,
+            ["proxyId"] = proxyId,
+        };
+        if (mode is not null)
+        {
+            body["mode"] = mode;
+        }
+
+        return _api.SendAsync(
             HttpMethod.Put,
             $"{SecretsPath}/telegram-sessions/{id}",
             token,
-            JsonSerializer.Serialize(new { name, session, proxyId }),
+            JsonSerializer.Serialize(body),
             ct);
+    }
 
     private Task<HttpResponseMessage> PutProxyAsync(
         string? token,

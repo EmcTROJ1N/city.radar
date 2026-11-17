@@ -13,7 +13,7 @@ namespace Sources.Core.Secrets;
 internal static class SecretsRequestSupport
 {
     private static readonly HashSet<string> TelegramSessionFields =
-        new(StringComparer.Ordinal) { "name", "session", "proxyId" };
+        new(StringComparer.Ordinal) { "name", "session", "mode", "proxyId" };
 
     private static readonly HashSet<string> ProxyFields =
         new(StringComparer.Ordinal) { "name", "scheme", "host", "port", "username", "password" };
@@ -37,10 +37,11 @@ internal static class SecretsRequestSupport
 
         var name = ReadName(root, errors);
         var session = ReadRequiredString(root, "session", errors);
+        var mode = ReadTelegramMode(root, errors);
         var proxyId = ReadOptionalGuid(root, "proxyId", errors);
 
         return errors.Count == 0
-            ? new TelegramSessionInput(name!, session!, proxyId)
+            ? new TelegramSessionInput(name!, session!, mode, proxyId)
             : null;
     }
 
@@ -258,6 +259,28 @@ internal static class SecretsRequestSupport
         return id;
     }
 
+    /// <summary>
+    /// Способ входа Telegram-сессии. Поле необязательно: старые клиенты присылают только
+    /// значение, а способ определяется по формату (токен бота или JSON MTProto).
+    /// </summary>
+    private static string? ReadTelegramMode(JsonElement root, List<ValidationError> errors)
+    {
+        if (!root.TryGetProperty("mode", out var value) || value.ValueKind == JsonValueKind.Null)
+        {
+            return null;
+        }
+
+        if (value.ValueKind != JsonValueKind.String
+            || !TelegramSecretModes.IsKnown(value.GetString()))
+        {
+            errors.Add(new ValidationError("mode", "Способ входа должен быть bot или userbot"));
+
+            return null;
+        }
+
+        return value.GetString();
+    }
+
     private static void RejectUnknownFields(
         JsonElement root,
         HashSet<string> allowed,
@@ -274,7 +297,7 @@ internal static class SecretsRequestSupport
 }
 
 /// <summary>Тело <c>TelegramSessionSecret</c> после проверки.</summary>
-internal sealed record TelegramSessionInput(string Name, string Session, Guid? ProxyId);
+internal sealed record TelegramSessionInput(string Name, string Session, string? Mode, Guid? ProxyId);
 
 /// <summary>Тело <c>ProxySecret</c> после проверки.</summary>
 internal sealed record ProxyInput(

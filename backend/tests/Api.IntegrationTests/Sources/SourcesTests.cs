@@ -507,19 +507,51 @@ public sealed class SourcesTests(PostgresFixture fixture) : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Telegram_source_is_created_in_bot_mode()
+    public async Task Telegram_source_is_created_in_bot_mode_by_default()
     {
         var ct = CancellationToken.None;
         var token = await _api.ModeratorTokenAsync(ct);
         var sourceId = await CreateSourceAsync(token, ct);
 
-        // В первой версии UI умеет только Bot API, поэтому режим фиксируется на сервере.
+        // Старые клиенты не присылают mode: по умолчанию остаётся Bot API.
         (await _api.CountAsync(
             $"""
              select count(*) from sources
              where id = '{sourceId}' and settings->>'mode' = 'bot'
              """,
             ct)).ShouldBe(1L);
+    }
+
+    [Fact]
+    public async Task Telegram_source_can_be_created_in_mtproto_mode()
+    {
+        var ct = CancellationToken.None;
+        var token = await _api.ModeratorTokenAsync(ct);
+        var suffix = CatalogApi.NewSuffix();
+
+        using var response = await _api.SendAsync(
+            HttpMethod.Post,
+            SourcesPath,
+            token,
+            SourceJson(
+                $"MTProto {suffix}",
+                chatId: $"@mtproto_{suffix}",
+                mode: "userbot"),
+            ct);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.Created);
+        var sourceId = (await CatalogApi.ReadJsonAsync(response, ct)).GetProperty("id").GetGuid();
+
+        (await _api.CountAsync(
+            $"""
+             select count(*) from sources
+             where id = '{sourceId}' and settings->>'mode' = 'userbot'
+             """,
+            ct)).ShouldBe(1L);
+
+        using var get = await _api.GetAsync($"{SourcesPath}/{sourceId}", token, ct);
+        (await CatalogApi.ReadJsonAsync(get, ct)).GetProperty("mode").GetString()
+            .ShouldBe("userbot");
     }
 
     [Fact]
@@ -649,12 +681,17 @@ public sealed class SourcesTests(PostgresFixture fixture) : IAsyncLifetime
         string sourceType = "telegram_chat",
         string chatId = "@source_chat",
         int timeoutSeconds = 3600,
-        string userPrompt = "") =>
-        $$"""
-          {"name":"{{name}}","sourceType":"{{sourceType}}","chatId":"{{chatId}}",
+        string userPrompt = "",
+        string? mode = null)
+    {
+        var modeField = mode is null ? string.Empty : $",\"mode\":\"{mode}\"";
+
+        return $$"""
+          {"name":"{{name}}","sourceType":"{{sourceType}}"{{modeField}},"chatId":"{{chatId}}",
            "timeoutSeconds":{{timeoutSeconds.ToString(CultureInfo.InvariantCulture)}},
            "userPrompt":"{{userPrompt}}"}
           """;
+    }
 
     private async Task<StatusExpectation> CreateStatusAsync(
         string token,

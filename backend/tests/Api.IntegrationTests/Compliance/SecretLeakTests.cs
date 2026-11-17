@@ -150,7 +150,7 @@ public sealed class SecretLeakTests(PostgresFixture fixture) : IAsyncLifetime
         var secrets = await PutSecretsAsync(ct);
         var allowedFields = new HashSet<string>(StringComparer.Ordinal)
         {
-            "id", "kind", "name", "hasValue", "updatedAt", "proxyId",
+            "id", "kind", "name", "hasValue", "updatedAt", "proxyId", "mode",
         };
 
         using var response = await _api.GetAsync("/api/v1/admin/secrets", _adminToken, ct);
