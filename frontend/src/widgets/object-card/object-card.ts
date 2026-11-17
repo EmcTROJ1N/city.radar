@@ -134,14 +134,17 @@ const OBSERVATION_LIMIT = 20;
       }
     </article>`,
   styles: `
-    :host { display: block; }
-    .passport { border-top: 6px solid var(--tone, var(--line)); }
-    h2 { font-size: 22px; }
+    :host { display: block; min-width: 0; }
+    .passport { border-top: 6px solid var(--tone, var(--line)); min-width: 0; overflow-wrap: anywhere; }
+    // Карточка живёт в узкой правой колонке: длинные имена, адреса и ссылки
+    // переносим, иначе текст вылезает за фон и появляется горизонтальный скролл.
+    .passport > *, .passport .row > *, .passport section, .passport li { min-width: 0; }
+    h2 { font-size: 22px; overflow-wrap: anywhere; }
     h3 { margin-bottom: 8px; }
     .src { padding: 8px 0; border-bottom: 1px solid var(--line-soft); }
     .src:last-child { border-bottom: 0; }
-    .obs { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; max-height: 260px; overflow: auto; }
-    blockquote { margin: 4px 0 0; padding-left: 10px; border-left: 3px solid var(--line); color: var(--ink-2); font-size: 14px; }
+    .obs { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+    blockquote { margin: 4px 0 0; padding-left: 10px; border-left: 3px solid var(--line); color: var(--ink-2); font-size: 14px; overflow-wrap: anywhere; }
     .about { justify-self: start; padding-left: 0; }
   `,
 })

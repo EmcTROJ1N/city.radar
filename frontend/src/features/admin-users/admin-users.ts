@@ -28,8 +28,8 @@ const PAGE_SIZE = 50;
       </div>
     </div>
 
-    <div class="card card--flush table-wrap">
-      <table class="table">
+    <div class="card card--flush table-wrap table-wrap--cards">
+      <table class="table table--cards">
         <thead>
           <tr>
             <th>Пользователь</th>

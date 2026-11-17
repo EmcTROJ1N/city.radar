@@ -9,7 +9,7 @@ import { SourceHealthPanel } from '@features/source-health/source-health';
 import { ApiError, errorText, toApiError } from '@shared/api/api-error';
 import type { Source, SourceHealth, SourceStatus, SourceType } from '@shared/api/types';
 import { agoIso, durationSec } from '@shared/lib/format';
-import { SOURCE_STATE_LABEL, SOURCE_TYPE_LABEL } from '@shared/lib/labels';
+import { SOURCE_STATE_LABEL, SOURCE_TYPE_LABEL, TELEGRAM_MODE_SHORT } from '@shared/lib/labels';
 import { ConfirmService } from '@shared/ui/confirm';
 import { Icon, normalizeIcon } from '@shared/ui/icon';
 import { LoadMore } from '@shared/ui/load-more';
@@ -73,9 +73,9 @@ const PAGE_SIZE = 50;
             </div>
           }
 
-          <div class="card card--flush table-wrap">
+          <div class="card card--flush table-wrap table-wrap--cards">
             @if (items().length) {
-              <table class="table">
+              <table class="table table--cards">
                 <thead>
                   <tr>
                     <th>Источник</th>
@@ -89,7 +89,7 @@ const PAGE_SIZE = 50;
                   @for (source of items(); track source.id) {
                     <tr class="is-clickable" tabindex="0" [class.is-active]="selectedId() === source.id"
                       (click)="select(source.id)" (keydown.enter)="select(source.id)">
-                      <td>
+                      <td class="cell-main">
                         <strong>{{ source.name }}</strong>
                         <div>
                           <small>
@@ -97,12 +97,13 @@ const PAGE_SIZE = 50;
                               Системный · {{ categoryName(source) }}
                             } @else {
                               {{ typeLabels[source.sourceType] }} · {{ source.chatId }}
+                              @if (source.mode) { · {{ modeLabels[source.mode] }} }
                             }
                             @if (!source.isEnabled) { · выключен }
                           </small>
                         </div>
                       </td>
-                      <td>
+                      <td data-label="Статусы">
                         <div class="statuses" (mouseenter)="showStatuses($event, source)" (mouseleave)="hideStatuses()">
                           @for (status of source.statuses; track status.id) {
                             <span class="statuses__dot" [class]="'tone-' + status.color" [title]="status.name"></span>
@@ -111,12 +112,12 @@ const PAGE_SIZE = 50;
                           }
                         </div>
                       </td>
-                      <td class="num">{{ timeout(source.timeoutSeconds) }}</td>
-                      <td>
+                      <td class="num" data-label="Таймаут">{{ timeout(source.timeoutSeconds) }}</td>
+                      <td data-label="Состояние">
                         <app-status-badge [label]="stateLabels[source.state]" [tone]="stateTone(source.state)"
                           [icon]="stateIcon(source.state)" />
                       </td>
-                      <td class="num">{{ source.lastMessageAt ? ago(source.lastMessageAt) : '—' }}</td>
+                      <td class="num" data-label="Последнее сообщение">{{ source.lastMessageAt ? ago(source.lastMessageAt) : '—' }}</td>
                     </tr>
                   }
                 </tbody>
@@ -175,8 +176,9 @@ const PAGE_SIZE = 50;
     .statuses__dot { width: 10px; height: 10px; border-radius: 50%; background: var(--tone, var(--st-stale)); flex: none; }
     .statuses__pop { position: fixed; z-index: 60; display: grid; gap: 4px; padding: 8px;
       border-radius: var(--r-md); background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow-float); }
-    @media (max-width: 900px) {
-      // На узких экранах прячем второстепенные колонки, чтобы список не расползался.
+    @media (min-width: 761px) and (max-width: 900px) {
+      // На планшетах прячем второстепенные колонки, чтобы список не расползался.
+      // На телефонах таблица превращается в карточки и показывает все поля.
       .table th:nth-child(3), .table td:nth-child(3),
       .table th:nth-child(5), .table td:nth-child(5) { display: none; }
     }
@@ -195,6 +197,7 @@ export class SourcesPage {
 
   protected readonly types = SOURCE_TYPE_FILTER_OPTIONS;
   protected readonly typeLabels = SOURCE_TYPE_LABEL;
+  protected readonly modeLabels = TELEGRAM_MODE_SHORT;
   protected readonly stateLabels = SOURCE_STATE_LABEL;
   protected readonly stateTone = sourceStateTone;
   protected readonly stateIcon = sourceStateIcon;

@@ -13,19 +13,19 @@ import { ROLES, roleLabel } from './roles';
   selector: 'tr[app-admin-user-row]',
   imports: [Hint],
   template: `
-    <td>
+    <td class="cell-main">
       <strong>{{ user().displayName }}</strong>
       @if (isSelf()) { <span class="chip">это вы</span> }
     </td>
-    <td class="num">{{ user().maxUserId }}</td>
-    <td>
+    <td class="num" data-label="MAX ID">{{ user().maxUserId }}</td>
+    <td data-label="Роли">
       <div class="row">
         @for (role of user().roles; track role) { <span class="chip chip--brand">{{ label(role) }}</span> }
       </div>
     </td>
-    <td>{{ created() }}</td>
-    <td>{{ lastLogin() }}</td>
-    <td>
+    <td data-label="Создан">{{ created() }}</td>
+    <td data-label="Последний вход">{{ lastLogin() }}</td>
+    <td data-label="Доступ">
       <div class="roles">
         @for (role of roles; track role.value) {
           <label class="role">

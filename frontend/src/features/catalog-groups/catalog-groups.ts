@@ -31,7 +31,7 @@ interface Draft {
     </div>
 
     <div class="split">
-      <div class="card card--flush table-wrap">
+      <div class="card card--flush table-wrap table-wrap--cards">
         @if (loadError(); as e) {
           <div class="pad">
             <div class="callout" role="alert">
@@ -45,21 +45,21 @@ interface Draft {
         } @else if (!rows().length) {
           <p class="empty">Групп пока нет. Создайте первую.</p>
         } @else {
-          <table class="table">
+          <table class="table table--cards">
             <thead><tr><th>Название</th><th>Категория</th><th>Цвет</th><th>Видна по умолчанию</th><th></th></tr></thead>
             <tbody>
               @for (g of rows(); track g.id) {
                 <tr class="is-clickable" [class.is-active]="draft()?.id === g.id" (click)="edit(g)">
-                  <td><strong>{{ g.name }}</strong></td>
-                  <td>{{ categoryName(g.categoryId) }}</td>
-                  <td>
+                  <td class="cell-main"><strong>{{ g.name }}</strong></td>
+                  <td data-label="Категория">{{ categoryName(g.categoryId) }}</td>
+                  <td data-label="Цвет">
                     @if (g.color) {
                       <span class="swatch"><span class="dot" [style.background]="g.color"></span><code>{{ g.color }}</code></span>
                     } @else {
                       <small>не задан</small>
                     }
                   </td>
-                  <td>@if (g.isVisibleByDefault) { <span class="chip chip--brand">Да</span> } @else { <span class="chip">Нет</span> }</td>
+                  <td data-label="Видна">@if (g.isVisibleByDefault) { <span class="chip chip--brand">Да</span> } @else { <span class="chip">Нет</span> }</td>
                   <td class="actions">
                     <button class="btn btn--ghost btn--sm" type="button" (click)="edit(g); $event.stopPropagation()"><app-icon name="edit" />Изменить</button>
                   </td>

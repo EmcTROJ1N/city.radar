@@ -107,7 +107,7 @@ export function initialFocus(items: MapItem[], id: string | null): MapGeometry |
     .mapview { position: relative; height: calc(100dvh - var(--header-h)); min-height: 520px; }
     .canvas { position: absolute; inset: 0; }
     .rail { position: absolute; top: var(--gap); z-index: 4; width: min(340px, calc(100% - 2 * var(--gap)));
-      max-height: calc(100% - 2 * var(--gap)); overflow: auto; }
+      max-height: calc(100% - 2 * var(--gap)); overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; }
     .rail--left { left: var(--gap); display: grid; gap: 8px; }
     .rail--right { right: var(--gap); }
     .results { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }

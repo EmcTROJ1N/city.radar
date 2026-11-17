@@ -6,26 +6,30 @@ import { dateTime } from '@shared/lib/format';
 import { SOURCE_STATE_LABEL } from '@shared/lib/labels';
 import { Icon } from '@shared/ui/icon';
 import { StatusBadge } from '@shared/ui/status-badge';
+import { ToastService } from '@shared/ui/toast';
 
 /** Состояние выбранного источника: последнее сообщение, FloodWait и ошибка. */
 @Component({
   selector: 'app-source-health',
   imports: [Icon, StatusBadge],
   template: `
-    <section class="card stack" aria-labelledby="source-health-title">
+    <section class="card stack" aria-labelledby="source-health-title" [attr.aria-busy]="loading()">
       <div class="row">
         <h2 id="source-health-title">Состояние</h2>
         <span class="grow"></span>
-        <button class="btn btn--ghost btn--sm" type="button" [disabled]="loading()" (click)="load()">
-          <app-icon name="clock" />Обновить
+        <button class="btn btn--ghost btn--sm" type="button" [disabled]="loading()" (click)="load(true)">
+          <app-icon name="refresh" [class.is-spinning]="loading()" />
+          {{ loading() ? 'Обновление…' : 'Обновить' }}
         </button>
       </div>
 
       @if (error(); as problem) {
-        <div class="callout" role="alert">
+        <div class="callout callout--alert" role="alert">
           <app-icon name="alert" />
           <span class="grow">{{ message(problem) }}</span>
-          <button class="btn btn--sm" type="button" (click)="load()">Повторить</button>
+          <button class="btn btn--sm" type="button" [disabled]="loading()" (click)="load(true)">
+            Повторить
+          </button>
         </div>
       } @else if (health(); as value) {
         <dl class="kv">
@@ -44,9 +48,26 @@ import { StatusBadge } from '@shared/ui/status-badge';
         <p class="muted">Загрузка…</p>
       }
     </section>`,
+  styles: `
+    :host { display: block; }
+    // Индикатор запроса: иконка крутится, пока идёт обращение к API.
+    app-icon.is-spinning { animation: health-spin 0.9s linear infinite; }
+    @keyframes health-spin { to { transform: rotate(360deg); } }
+    // Ошибка появляется заново на каждую неудачную попытку, в том числе с тем же текстом.
+    .callout--alert { animation: health-alert-in 0.18s ease-out; }
+    @keyframes health-alert-in {
+      from { opacity: 0; transform: translateY(-4px); }
+      to { opacity: 1; transform: none; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      app-icon.is-spinning { animation: none; }
+      .callout--alert { animation: none; }
+    }
+  `,
 })
 export class SourceHealthPanel {
   private readonly api = inject(SourcesApi);
+  private readonly toasts = inject(ToastService);
 
   readonly sourceId = input.required<string>();
   readonly refreshed = output<SourceHealth>();
@@ -69,7 +90,8 @@ export class SourceHealthPanel {
     });
   }
 
-  protected async load(): Promise<void> {
+  /** Перечитывает состояние источника; ручной вызов дополнительно подтверждает ошибку тостом. */
+  protected async load(manual = false): Promise<void> {
     const id = this.sourceId();
     const token = ++this.token;
     this.loading.set(true);
@@ -80,7 +102,12 @@ export class SourceHealthPanel {
       this.health.set(value);
       this.refreshed.emit(value);
     } catch (err) {
-      if (token === this.token) this.error.set(toApiError(err));
+      if (token !== this.token) return;
+      const problem = toApiError(err);
+      this.error.set(problem);
+      // Новый экземпляр ошибки заставляет шаблон пересоздать плашку: повторное
+      // нажатие «Обновить» снова показывает тот же текст, а не оставляет «ничего не произошло».
+      if (manual) this.toasts.error(this.message(problem));
     } finally {
       if (token === this.token) this.loading.set(false);
     }

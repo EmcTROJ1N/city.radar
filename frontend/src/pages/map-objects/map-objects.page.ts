@@ -116,8 +116,8 @@ const PAGE_SIZE = 30;
         }
       </div>
 
-      <div class="card card--flush table-wrap">
-        <table class="table">
+      <div class="card card--flush table-wrap table-wrap--cards">
+        <table class="table table--cards">
           <thead>
             <tr>
               <th>Фиксация</th>
@@ -136,15 +136,15 @@ const PAGE_SIZE = 30;
                 [class.is-muted]="!object.isActive"
                 (click)="select(object.id)"
               >
-                <td>
+                <td class="cell-main">
                   <strong>{{ object.name }}</strong>
                   @if (!object.isActive) { <small> · неактивна</small> }
                 </td>
-                <td><span class="chip">{{ coverageLabel(object.coverageKind) }}</span></td>
-                <td>{{ typeName(object.objectTypeId) }}</td>
-                <td>{{ groupName(object.groupId) }}</td>
-                <td>{{ object.address || '—' }}</td>
-                <td>
+                <td data-label="Вид"><span class="chip">{{ coverageLabel(object.coverageKind) }}</span></td>
+                <td data-label="Тип">{{ typeName(object.objectTypeId) }}</td>
+                <td data-label="Группа">{{ groupName(object.groupId) }}</td>
+                <td data-label="Адрес">{{ object.address || '—' }}</td>
+                <td data-label="Источники">
                   @if (object.sourceIds.length) {
                     <span class="chip"><app-icon name="link" />{{ object.sourceIds.length }}</span>
                   } @else {
@@ -154,8 +154,8 @@ const PAGE_SIZE = 30;
               </tr>
             } @empty {
               <tr>
-                <td colspan="6">
-                  <div class="empty">
+                <td colspan="6" class="empty">
+                  <div>
                     {{ loading() ? 'Загрузка…' : 'Фиксаций нет. Измените фильтры или создайте новую.' }}
                   </div>
                 </td>

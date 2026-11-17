@@ -96,8 +96,8 @@ function toIso(local: string): string | null {
       </form>
     </div>
 
-    <div class="card card--flush table-wrap">
-      <table class="table">
+    <div class="card card--flush table-wrap table-wrap--cards">
+      <table class="table table--cards">
         <thead>
           <tr><th>Время</th><th>Кто</th><th>Действие</th><th>Объект</th><th>Причина</th></tr>
         </thead>
@@ -109,15 +109,15 @@ function toIso(local: string): string | null {
           } @else {
             @for (entry of items(); track entry.id) {
               <tr class="is-clickable" [class.is-active]="expanded() === entry.id" (click)="toggle(entry)">
-                <td class="nowrap">{{ at(entry.at) }}</td>
-                <td>{{ who(entry) }}</td>
-                <td><code>{{ entry.action }}</code></td>
-                <td>{{ object(entry) }}</td>
-                <td class="reason">{{ entry.reason ?? '—' }}</td>
+                <td class="nowrap" data-label="Время">{{ at(entry.at) }}</td>
+                <td data-label="Кто">{{ who(entry) }}</td>
+                <td data-label="Действие"><code>{{ entry.action }}</code></td>
+                <td data-label="Объект">{{ object(entry) }}</td>
+                <td class="reason" data-label="Причина">{{ entry.reason ?? '—' }}</td>
               </tr>
               @if (expanded() === entry.id) {
                 <tr class="details-row">
-                  <td colspan="5">
+                  <td colspan="5" class="details">
                     <div class="stack">
                       <div class="changed">Изменённые ключи: {{ changedList() || '—' }}</div>
                       <div class="json-grid">
@@ -172,6 +172,9 @@ function toIso(local: string): string | null {
     .ln.is-changed { background: color-mix(in srgb, var(--st-limited) 28%, transparent); }
     .changed { font-size: 13px; color: var(--ink-2); }
     @media (max-width: 800px) { .json-grid { grid-template-columns: 1fr; } }
+    @media (max-width: 760px) {
+      .json-grid pre { white-space: pre-wrap; overflow-wrap: anywhere; overflow-x: hidden; }
+    }
   `,
 })
 export class AdminAudit {

@@ -39,7 +39,7 @@ interface Draft {
     </div>
 
     <div class="split">
-      <div class="card card--flush table-wrap">
+      <div class="card card--flush table-wrap table-wrap--cards">
         @if (loadError(); as e) {
           <div class="pad">
             <div class="callout" role="alert">
@@ -53,16 +53,16 @@ interface Draft {
         } @else if (!rows().length) {
           <p class="empty">Категорий пока нет. Создайте первую.</p>
         } @else {
-          <table class="table">
+          <table class="table table--cards">
             <thead><tr><th>Код</th><th>Название</th><th>Иконка</th><th class="num">Порядок</th><th>Активна</th><th></th></tr></thead>
             <tbody>
               @for (c of rows(); track c.id) {
                 <tr class="is-clickable" [class.is-active]="draft()?.id === c.id" (click)="edit(c)">
-                  <td><code>{{ c.code }}</code></td>
-                  <td><strong>{{ c.name }}</strong></td>
-                  <td><span class="row"><app-icon [name]="iconOf(c.icon)" />{{ c.icon ?? '—' }}</span></td>
-                  <td class="num">{{ c.sortOrder }}</td>
-                  <td>@if (c.isActive) { <span class="chip chip--brand">Да</span> } @else { <span class="chip">Нет</span> }</td>
+                  <td data-label="Код"><code>{{ c.code }}</code></td>
+                  <td class="cell-main"><strong>{{ c.name }}</strong></td>
+                  <td data-label="Иконка"><span class="row"><app-icon [name]="iconOf(c.icon)" />{{ c.icon ?? '—' }}</span></td>
+                  <td class="num" data-label="Порядок">{{ c.sortOrder }}</td>
+                  <td data-label="Активна">@if (c.isActive) { <span class="chip chip--brand">Да</span> } @else { <span class="chip">Нет</span> }</td>
                   <td class="actions">
                     <button class="btn btn--ghost btn--sm" type="button" (click)="edit(c); $event.stopPropagation()"><app-icon name="edit" />Изменить</button>
                   </td>

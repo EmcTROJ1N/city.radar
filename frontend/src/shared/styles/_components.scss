@@ -56,6 +56,7 @@ select {
 }
 
 .table-wrap { overflow-x: auto; }
+.table-wrap--cards { overflow-x: auto; }
 .table { width: 100%; border-collapse: collapse; font-size: 14px;
   th { text-align: left; font-size: 13px; color: var(--ink-3);
     font-weight: 600; padding: 10px 14px; border-bottom: 2px solid var(--line); white-space: nowrap; }
@@ -96,3 +97,44 @@ select {
 
 .empty { padding: 28px; text-align: center; color: var(--ink-3); }
 .kv { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; font-size: 14px; dt { color: var(--ink-3); } dd { margin: 0; } }
+
+// Мобильная адаптация: таблицы с классом table--cards превращаются в карточки,
+// чтобы не появлялся горизонтальный скролл. Вкладки переносятся на новую строку.
+@media (max-width: 760px) {
+  .table-wrap--cards { overflow-x: visible; }
+
+  .table--cards { display: block; }
+  .table--cards thead { display: none; }
+  .table--cards tbody { display: grid; gap: 10px; padding: 10px; }
+  .table--cards tbody tr { display: grid; gap: 5px; padding: 10px 12px;
+    border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); }
+  .table--cards tbody tr:last-child td { border-bottom: 0; }
+  .table--cards td { display: flex; flex-wrap: wrap; gap: 2px 8px;
+    align-items: baseline; padding: 0; border: 0; text-align: left; white-space: normal; overflow-wrap: anywhere; }
+  .table--cards td::before { content: attr(data-label) ':'; flex: none; color: var(--ink-3);
+    font-size: 12px; font-weight: 500; line-height: 1.5; }
+  .table--cards td.num { text-align: left; }
+  .table--cards td > * { min-width: 0; max-width: 100%; }
+  .table--cards td.cell-main { display: block; order: -1; padding-bottom: 5px;
+    border-bottom: 1px solid var(--line-soft); font-size: 15px; }
+  .table--cards td.cell-main::before { display: none; }
+  .table--cards td.actions { display: block; margin-top: 2px; }
+  .table--cards td.actions::before { display: none; }
+  .table--cards td.actions .btn { width: 100%; justify-content: center; }
+  .table--cards td.details { display: block; }
+  .table--cards td.details::before { display: none; }
+  .table--cards tr.details-row { display: block; padding: 0; border: 0; background: transparent; }
+  .table--cards tr.details-row td { display: block; }
+  .table--cards tr.details-row td::before { display: none; }
+  .table--cards .empty { display: block; padding: 20px; }
+  .table--cards td.empty::before { display: none; }
+  .table--cards .chip { white-space: normal; height: auto; min-height: 24px; text-align: left; }
+  .table--cards .status { white-space: normal; height: auto; }
+
+  .section-head { flex-wrap: wrap; align-items: flex-start; }
+
+  .tabs { flex-wrap: wrap; overflow-x: visible; border-bottom: 0; gap: 6px; }
+  .tabs button { border: 1px solid var(--line); border-radius: var(--r-md);
+    padding: 7px 10px; background: var(--surface); white-space: normal; text-align: left; }
+  .tabs button[aria-selected='true'] { border-color: var(--brand); background: var(--brand-soft); }
+}

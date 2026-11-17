@@ -41,7 +41,7 @@ interface Draft {
     </div>
 
     <div class="split">
-      <div class="card card--flush table-wrap">
+      <div class="card card--flush table-wrap table-wrap--cards">
         @if (loadError(); as e) {
           <div class="pad">
             <div class="callout" role="alert">
@@ -55,16 +55,16 @@ interface Draft {
         } @else if (!rows().length) {
           <p class="empty">Записей пока нет. Создайте первую.</p>
         } @else {
-          <table class="table">
+          <table class="table table--cards">
             <thead><tr><th>Статус</th><th>Код</th><th>Категория</th><th class="num">Вес</th><th>Позитивный</th><th></th></tr></thead>
             <tbody>
               @for (s of rows(); track s.id) {
                 <tr class="is-clickable" [class.is-active]="draft()?.id === s.id" (click)="edit(s)">
-                  <td><app-status-badge [label]="s.name" [tone]="s.color" [icon]="iconOf(s.icon)" /></td>
-                  <td><code>{{ s.code }}</code></td>
-                  <td>{{ categoryName(s.categoryId) }}</td>
-                  <td class="num">{{ s.severity }}</td>
-                  <td>@if (s.isPositive) { <span class="chip chip--brand">Да</span> } @else { <span class="chip">Нет</span> }</td>
+                  <td class="cell-main"><app-status-badge [label]="s.name" [tone]="s.color" [icon]="iconOf(s.icon)" /></td>
+                  <td data-label="Код"><code>{{ s.code }}</code></td>
+                  <td data-label="Категория">{{ categoryName(s.categoryId) }}</td>
+                  <td class="num" data-label="Вес">{{ s.severity }}</td>
+                  <td data-label="Позитивный">@if (s.isPositive) { <span class="chip chip--brand">Да</span> } @else { <span class="chip">Нет</span> }</td>
                   <td class="actions">
                     <button class="btn btn--ghost btn--sm" type="button" (click)="edit(s); $event.stopPropagation()"><app-icon name="edit" />Изменить</button>
                   </td>
