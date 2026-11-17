@@ -226,7 +226,7 @@ public sealed class CategoriesTests(PostgresFixture fixture) : IAsyncLifetime
             HttpMethod.Post,
             "/api/v1/catalog/object-types",
             token,
-            $$"""{"categoryId":"{{categoryId}}","code":"type_{{suffix}}","name":"Тип","attributesSchema":{} }""",
+            $$"""{"categoryId":"{{categoryId}}","code":"type_{{suffix}}","name":"Тип"}""",
             ct))
         {
             response.StatusCode.ShouldBe(HttpStatusCode.Created);

@@ -18,7 +18,7 @@ namespace Api.IntegrationTests.Catalog;
 
 /// <summary>
 /// Фиксации на карте: CRUD, GeoJSON,
-/// проверки геометрии и атрибутов, фильтры, привязка источников, аудит, права и триггер
+/// проверки геометрии, фильтры, привязка источников, аудит, права и триггер
 /// <c>updated_at</c>. Хост Api поднимается на общей БД коллекции; изоляция — уникальные
 /// названия и коды на каждый тест.
 /// </summary>
@@ -52,7 +52,7 @@ public sealed class ObjectsTests(PostgresFixture fixture) : IAsyncLifetime
             $$"""
               {"name":"{{pointName}}","coverageKind":"point",
                "geometry":{"type":"Point","coordinates":[37.80,48.01]},
-               "address":"пр. Ленинский, 12","attributes":{"capacity":10} }
+               "address":"пр. Ленинский, 12" }
               """,
             ct))
         {
@@ -70,7 +70,6 @@ public sealed class ObjectsTests(PostgresFixture fixture) : IAsyncLifetime
             geometry.GetProperty("type").GetString().ShouldBe("Point");
             geometry.GetProperty("coordinates")[0].GetDouble().ShouldBe(37.80);
             geometry.GetProperty("coordinates")[1].GetDouble().ShouldBe(48.01);
-            json.GetProperty("attributes").GetProperty("capacity").GetInt32().ShouldBe(10);
         }
 
         (await _api.CountAsync(
@@ -89,7 +88,7 @@ public sealed class ObjectsTests(PostgresFixture fixture) : IAsyncLifetime
             ObjectsPath,
             token,
             $$"""
-              {"name":"{{polygonName}}","coverageKind":"polygon","attributes":{},
+              {"name":"{{polygonName}}","coverageKind":"polygon",
                "geometry":{"type":"Polygon","coordinates":[[[37.70,48.00],[37.75,48.00],[37.75,48.05],[37.70,48.05],[37.70,48.00]]]} }
               """,
             ct))
@@ -200,40 +199,11 @@ public sealed class ObjectsTests(PostgresFixture fixture) : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Attributes_not_matching_type_schema_422()
-    {
-        var ct = CancellationToken.None;
-        var token = await _api.ModeratorTokenAsync(ct);
-        var (objectTypeId, _) = await CreateObjectTypeAsync(
-            token,
-            "any",
-            """{"type":"object","properties":{"capacity":{"type":"number"}},"required":["capacity"]}""",
-            ct);
-
-        using var response = await _api.SendAsync(
-            HttpMethod.Post,
-            ObjectsPath,
-            token,
-            $$"""
-              {"name":"Не та схема","objectTypeId":"{{objectTypeId}}","coverageKind":"point",
-               "geometry":{"type":"Point","coordinates":[37.80,48.01]},
-               "attributes":{"capacity":"много"} }
-              """,
-            ct);
-
-        response.StatusCode.ShouldBe(HttpStatusCode.UnprocessableEntity);
-
-        var json = await CatalogApi.ReadJsonAsync(response, ct);
-        json.GetProperty("errors").EnumerateArray()
-            .ShouldContain(error => error.GetProperty("field").GetString() == "attributes");
-    }
-
-    [Fact]
     public async Task Point_geometry_kind_type_rejects_polygon_422()
     {
         var ct = CancellationToken.None;
         var token = await _api.ModeratorTokenAsync(ct);
-        var (objectTypeId, _) = await CreateObjectTypeAsync(token, "point", "{}", ct);
+        var (objectTypeId, _) = await CreateObjectTypeAsync(token, "point", ct);
 
         using var response = await _api.SendAsync(
             HttpMethod.Post,
@@ -377,7 +347,7 @@ public sealed class ObjectsTests(PostgresFixture fixture) : IAsyncLifetime
         }
 
         // categoryId фильтрует через тип объекта, objectTypeId — напрямую.
-        var (objectTypeId, categoryId) = await CreateObjectTypeAsync(token, "point", "{}", ct);
+        var (objectTypeId, categoryId) = await CreateObjectTypeAsync(token, "point", ct);
         var typedName = $"С типом {CatalogApi.NewSuffix()}";
 
         using (var response = await _api.SendAsync(
@@ -785,7 +755,6 @@ public sealed class ObjectsTests(PostgresFixture fixture) : IAsyncLifetime
     private async Task<(Guid Id, Guid CategoryId)> CreateObjectTypeAsync(
         string token,
         string geometryKind,
-        string attributesSchema,
         CancellationToken ct)
     {
         var suffix = CatalogApi.NewSuffix();
@@ -801,7 +770,7 @@ public sealed class ObjectsTests(PostgresFixture fixture) : IAsyncLifetime
             token,
             $$"""
               {"categoryId":"{{categoryId}}","code":"type_{{suffix}}","name":"Тип {{suffix}}",
-               "attributesSchema":{{attributesSchema}},"geometryKind":"{{geometryKind}}"}
+               "geometryKind":"{{geometryKind}}"}
               """,
             ct);
 

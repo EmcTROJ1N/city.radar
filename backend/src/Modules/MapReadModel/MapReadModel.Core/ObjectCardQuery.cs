@@ -14,8 +14,8 @@ namespace MapReadModel.Core;
 
 /// <summary>
 /// Чтение карточки фиксации
-///): итоговый статус, состояние по каждому привязанному источнику, последние отметки
-/// с текстом и ссылка на дисклеймер.
+///): итоговый статус, состояние по каждому привязанному источнику и последние отметки
+/// с текстом.
 /// </summary>
 /// <remarks>
 /// Модуль только читает: данные берутся сырыми SQL-запросами из <c>map_objects</c>,
@@ -29,9 +29,6 @@ public sealed class ObjectCardQuery(MayakDbContext db, TimeProvider time)
 {
     /// <summary>Сколько последних отметок с текстом возвращает карточка.</summary>
     public const int RecentObservationsLimit = 20;
-
-    /// <summary>Ссылка на дисклеймер о достоверности в <c>attributes</c> карточки.</summary>
-    public const string DisclaimerPath = "/disclaimer";
 
     /// <summary>
     /// Карточка активной фиксации; <c>null</c>, если фиксации нет или она неактивна (404).
@@ -78,7 +75,6 @@ public sealed class ObjectCardQuery(MayakDbContext db, TimeProvider time)
             header.GroupId,
             header.Address,
             header.Status,
-            WithDisclaimer(header.Attributes),
             sourceCards,
             recent);
     }
@@ -94,7 +90,6 @@ public sealed class ObjectCardQuery(MayakDbContext db, TimeProvider time)
                    mo.object_type_id,
                    mo.group_id,
                    mo.address,
-                   mo.attributes::text,
                    cs.source_status_id,
                    ss.code,
                    ss.name,
@@ -130,18 +125,17 @@ public sealed class ObjectCardQuery(MayakDbContext db, TimeProvider time)
             reader.IsDBNull(5) ? null : reader.GetGuid(5),
             reader.IsDBNull(6) ? null : reader.GetGuid(6),
             reader.IsDBNull(7) ? null : reader.GetString(7),
-            ParseAttributes(reader.IsDBNull(8) ? null : reader.GetString(8)),
             ReadStatus(
                 reader,
-                statusOrdinal: 9,
-                codeOrdinal: 10,
-                nameOrdinal: 11,
-                colorOrdinal: 12,
-                iconOrdinal: 13,
-                freshnessOrdinal: 14,
-                observedAtOrdinal: 15,
-                sourceTypeOrdinal: 16,
-                countOrdinal: 17));
+                statusOrdinal: 8,
+                codeOrdinal: 9,
+                nameOrdinal: 10,
+                colorOrdinal: 11,
+                iconOrdinal: 12,
+                freshnessOrdinal: 13,
+                observedAtOrdinal: 14,
+                sourceTypeOrdinal: 15,
+                countOrdinal: 16));
     }
 
     private async Task<IReadOnlyList<SourceRow>> ReadSourcesAsync(
@@ -424,44 +418,6 @@ public sealed class ObjectCardQuery(MayakDbContext db, TimeProvider time)
             reader.GetInt32(countOrdinal));
     }
 
-    /// <summary>
-    /// Атрибуты фиксации плюс ссылка на дисклеймер. Контракт описывает
-    /// <c>attributes</c> как свободный объект, поэтому ссылка не ломает схему.
-    /// </summary>
-    private static IReadOnlyDictionary<string, JsonElement> WithDisclaimer(
-        IReadOnlyDictionary<string, JsonElement> attributes)
-    {
-        var result = new Dictionary<string, JsonElement>(attributes, StringComparer.Ordinal)
-        {
-            ["disclaimerUrl"] = JsonSerializer.SerializeToElement(DisclaimerPath),
-        };
-
-        return result;
-    }
-
-    private static IReadOnlyDictionary<string, JsonElement> ParseAttributes(string? json)
-    {
-        var result = new Dictionary<string, JsonElement>(StringComparer.Ordinal);
-
-        if (string.IsNullOrWhiteSpace(json))
-        {
-            return result;
-        }
-
-        using var document = JsonDocument.Parse(json);
-        if (document.RootElement.ValueKind != JsonValueKind.Object)
-        {
-            return result;
-        }
-
-        foreach (var property in document.RootElement.EnumerateObject())
-        {
-            result[property.Name] = property.Value.Clone();
-        }
-
-        return result;
-    }
-
     private static JsonElement ParseJson(string json)
     {
         using var document = JsonDocument.Parse(json);
@@ -499,15 +455,14 @@ public sealed class ObjectCardQuery(MayakDbContext db, TimeProvider time)
         Guid? ObjectTypeId,
         Guid? GroupId,
         string? Address,
-        IReadOnlyDictionary<string, JsonElement> Attributes,
         MapStatusView? Status);
 
     private sealed record SourceRow(Guid Id, string Name, string SourceType, int TimeoutSeconds);
 }
 
 /// <summary>
-/// Карточка фиксации (OpenAPI <c>MapObjectCard</c>): поля <c>MapFeature</c>, <c>attributes</c>
-/// со ссылкой на дисклеймер, источники и последние отметки с текстом.
+/// Карточка фиксации (OpenAPI <c>MapObjectCard</c>): поля <c>MapFeature</c>,
+/// источники и последние отметки с текстом.
 /// </summary>
 /// <param name="Id">Идентификатор фиксации.</param>
 /// <param name="Name">Название.</param>
@@ -518,7 +473,6 @@ public sealed class ObjectCardQuery(MayakDbContext db, TimeProvider time)
 /// <param name="GroupId">Группа.</param>
 /// <param name="Address">Адрес.</param>
 /// <param name="Status">Итоговый статус из <c>current_statuses</c>; <c>null</c> — «неизвестно».</param>
-/// <param name="Attributes">Атрибуты фиксации и ссылка на дисклеймер (<c>disclaimerUrl</c>).</param>
 /// <param name="Sources">Состояние по каждому привязанному источнику.</param>
 /// <param name="Observations">Последние отметки с текстом, без автора.</param>
 public sealed record MapObjectCard(
@@ -531,7 +485,6 @@ public sealed record MapObjectCard(
     Guid? GroupId,
     string? Address,
     MapStatusView? Status,
-    IReadOnlyDictionary<string, JsonElement> Attributes,
     IReadOnlyList<SourceCardView> Sources,
     IReadOnlyList<CardObservationView> Observations);
 

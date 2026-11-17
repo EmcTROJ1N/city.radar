@@ -448,7 +448,6 @@ public sealed class FeaturesTests(PostgresFixture fixture) : IAsyncLifetime
                 ["type"] = "Point",
                 ["coordinates"] = new JsonArray(lon, lat),
             },
-            ["attributes"] = new JsonObject(),
         };
 
         if (objectTypeId is { } typeId)
@@ -485,7 +484,6 @@ public sealed class FeaturesTests(PostgresFixture fixture) : IAsyncLifetime
                 ["type"] = "Polygon",
                 ["coordinates"] = new JsonArray(coordinates),
             },
-            ["attributes"] = new JsonObject(),
         };
 
         return await CreateObjectAsync(token, body, ct);
@@ -519,7 +517,6 @@ public sealed class FeaturesTests(PostgresFixture fixture) : IAsyncLifetime
             ["categoryId"] = categoryId,
             ["code"] = $"type_{suffix}",
             ["name"] = $"Тип {suffix}",
-            ["attributesSchema"] = new JsonObject(),
             ["geometryKind"] = "any",
         };
 

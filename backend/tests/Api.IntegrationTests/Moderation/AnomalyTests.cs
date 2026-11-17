@@ -410,7 +410,7 @@ public sealed class AnomalyTests(PostgresFixture fixture) : IAsyncLifetime
                 token,
                 $$"""
                   {"categoryId":"{{categoryId}}","code":"type_{{suffix}}","name":"Тип {{suffix}}",
-                   "attributesSchema":{},"geometryKind":"point"}
+                   "geometryKind":"point"}
                   """,
                 ct);
             typeResponse.StatusCode.ShouldBe(System.Net.HttpStatusCode.Created);

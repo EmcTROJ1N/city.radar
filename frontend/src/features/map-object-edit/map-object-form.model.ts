@@ -9,7 +9,6 @@ export interface MapObjectFormValue {
   objectTypeId: string | null;
   groupId: string | null;
   address: string;
-  attributes: Record<string, unknown>;
   isActive: boolean;
   sourceIds: string[];
 }
@@ -19,19 +18,10 @@ export interface SourceDiff {
   toUnlink: string[];
 }
 
-export type AttributeKind = 'string' | 'number' | 'integer' | 'boolean' | 'enum';
-
 export const COVERAGE: { value: CoverageKind; label: string }[] = [
   { value: 'polygon', label: 'Геозона' },
   { value: 'point', label: 'Точка' },
 ];
-
-export interface AttributeField {
-  key: string;
-  label: string;
-  kind: AttributeKind;
-  options: { value: string; label: string }[];
-}
 
 export function emptyMapObjectForm(): MapObjectFormValue {
   return {
@@ -41,7 +31,6 @@ export function emptyMapObjectForm(): MapObjectFormValue {
     objectTypeId: null,
     groupId: null,
     address: '',
-    attributes: {},
     isActive: true,
     sourceIds: [],
   };
@@ -55,7 +44,6 @@ export function formFromObject(object: MapObject): MapObjectFormValue {
     objectTypeId: object.objectTypeId ?? null,
     groupId: object.groupId ?? null,
     address: object.address ?? '',
-    attributes: { ...object.attributes },
     isActive: object.isActive,
     sourceIds: [...object.sourceIds],
   };
@@ -99,7 +87,6 @@ export function inputFromForm(
     groupId: value.groupId ?? null,
     coverageKind: value.coverageKind,
     geometry: toApiGeometry(value.geometry),
-    attributes: { ...value.attributes },
     isActive: value.isActive,
   };
   const address = value.address.trim();
@@ -127,46 +114,6 @@ export function polygonVertexCount(geometry: MapGeometry | null): number {
     if (first[0] === last[0] && first[1] === last[1]) return ring.length - 1;
   }
   return ring.length;
-}
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
-}
-
-/** Поля формы атрибутов по JSON Schema типа; без `properties` — пусто (тогда JSON-текст). */
-export function attributeFields(schema: unknown): AttributeField[] {
-  const root = asRecord(schema);
-  const properties = asRecord(root?.['properties']);
-  if (!properties) return [];
-
-  const fields: AttributeField[] = [];
-  for (const [key, raw] of Object.entries(properties)) {
-    const property = asRecord(raw);
-    if (!property) continue;
-    const enumValues = Array.isArray(property['enum']) ? property['enum'] : [];
-    const rawType = property['type'];
-    const type = Array.isArray(rawType)
-      ? rawType.find((value) => typeof value === 'string')
-      : rawType;
-    const kind: AttributeKind = enumValues.length
-      ? 'enum'
-      : type === 'number'
-        ? 'number'
-        : type === 'integer'
-          ? 'integer'
-          : type === 'boolean'
-            ? 'boolean'
-            : 'string';
-    fields.push({
-      key,
-      label: typeof property['title'] === 'string' ? property['title'] : key,
-      kind,
-      options: enumValues.map((value) => ({ value: String(value), label: String(value) })),
-    });
-  }
-  return fields;
 }
 
 export function geometryMismatch(

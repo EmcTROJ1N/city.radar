@@ -13,7 +13,6 @@ const TYPE: ObjectType = {
   code: 'column',
   name: 'Колонка',
   geometryKind: 'any',
-  attributesSchema: { properties: {} },
 };
 
 const OBJECT: MapObject = {
@@ -23,7 +22,6 @@ const OBJECT: MapObject = {
   groupId: null,
   coverageKind: 'point',
   geometry: { type: 'Point', coordinates: [37.8, 48.01] },
-  attributes: {},
   address: 'пр. Ленинский, 12',
   isActive: true,
   sourceIds: ['src-old'],

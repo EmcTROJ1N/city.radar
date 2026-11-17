@@ -530,7 +530,6 @@ public sealed class ETagTests(PostgresFixture fixture) : IAsyncLifetime
                 ["type"] = "Point",
                 ["coordinates"] = new JsonArray(lon, lat),
             },
-            ["attributes"] = new JsonObject(),
         };
 
         if (groupId is { } group)
@@ -573,7 +572,6 @@ public sealed class ETagTests(PostgresFixture fixture) : IAsyncLifetime
                 ["type"] = "Point",
                 ["coordinates"] = new JsonArray(lon, lat),
             },
-            ["attributes"] = new JsonObject(),
         };
 
         if (groupId is { } group)

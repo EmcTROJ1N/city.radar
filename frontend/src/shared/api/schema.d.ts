@@ -668,7 +668,7 @@ export interface paths {
         put?: never;
         /**
          * Создать фиксацию на карте
-         * @description Атрибуты проверяются по JSON Schema типа объекта. Источники можно привязать сразу (`sourceIds`).
+         * @description Источники можно привязать сразу (`sourceIds`).
          */
         post: operations["createCatalogObject"];
         delete?: never;
@@ -1020,9 +1020,6 @@ export interface components {
             lastObservation: components["schemas"]["PublicObservation"] | null;
         };
         MapObjectCard: components["schemas"]["MapFeature"] & {
-            attributes: {
-                [key: string]: unknown;
-            };
             sources: components["schemas"]["SourceCardView"][];
         };
         /** @description Отметка без идентификатора автора */
@@ -1483,10 +1480,6 @@ export interface components {
             categoryId: string;
             code: string;
             name: components["schemas"]["NonEmptyText"];
-            /** @description JSON Schema атрибутов фиксаций этого типа */
-            attributesSchema?: {
-                [key: string]: unknown;
-            };
             /**
              * @default any
              * @enum {string}
@@ -1498,10 +1491,6 @@ export interface components {
             categoryId: string;
             code: string;
             name: components["schemas"]["NonEmptyText"];
-            /** @description JSON Schema атрибутов фиксаций этого типа */
-            attributesSchema?: {
-                [key: string]: unknown;
-            };
             /**
              * @default any
              * @enum {string}
@@ -1577,10 +1566,6 @@ export interface components {
             groupId?: string | null;
             coverageKind: components["schemas"]["CoverageKind"];
             geometry: components["schemas"]["Geometry"];
-            /** @default {} */
-            attributes: {
-                [key: string]: unknown;
-            };
             address?: components["schemas"]["Text"];
             /** @default true */
             isActive: boolean;
@@ -1598,9 +1583,6 @@ export interface components {
             groupId?: string | null;
             coverageKind: components["schemas"]["CoverageKind"];
             geometry: components["schemas"]["Geometry"];
-            attributes: {
-                [key: string]: unknown;
-            };
             address?: string | null;
             isActive: boolean;
             sourceIds: string[];

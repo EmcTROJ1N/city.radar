@@ -4,7 +4,7 @@ namespace Catalog.Core.Domain;
 
 /// <summary>
 /// Фиксация на карте (таблица <c>map_objects</c>): точка или геозона
-/// с необязательными типом объекта, группой, адресом и JSONB-атрибутами. Геометрия хранится
+/// с необязательными типом объекта, группой и адресом. Геометрия хранится
 /// как PostGIS <c>geography(Geometry, 4326)</c>; тип геометрии обязан соответствовать
 /// <see cref="CoverageKind"/> (check в БД).
 /// </summary>
@@ -24,9 +24,6 @@ internal sealed class MapObject
 
     /// <summary>Геометрия в WGS 84 (SRID 4326): <see cref="Point"/> или <see cref="Polygon"/>.</summary>
     public Geometry Geometry { get; set; } = null!;
-
-    /// <summary>Атрибуты фиксации — JSON-объект, проверенный по схеме типа (jsonb).</summary>
-    public string Attributes { get; set; } = "{}";
 
     /// <summary>Адрес; <c>null</c>, если не задан.</summary>
     public string? Address { get; set; }

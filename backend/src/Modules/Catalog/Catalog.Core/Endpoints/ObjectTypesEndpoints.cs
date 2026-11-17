@@ -1,5 +1,3 @@
-using System.Text.Json;
-
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Web;
 
@@ -15,9 +13,8 @@ using Microsoft.EntityFrameworkCore;
 namespace Catalog.Core.Endpoints;
 
 /// <summary>
-/// <c>/catalog/object-types</c>: типы объектов с JSON Schema атрибутов.
-/// Чтение публичное, запись — по праву <c>catalog.objecttype.manage</c>. Схема проверяется
-/// пакетом JsonSchema.Net, тем же, которым будут валидироваться атрибуты фиксаций.
+/// <c>/catalog/object-types</c>: типы объектов и допустимый вид геометрии.
+/// Чтение публичное, запись — по праву <c>catalog.objecttype.manage</c>.
 /// </summary>
 public static class ObjectTypesEndpoints
 {
@@ -103,7 +100,6 @@ public static class ObjectTypesEndpoints
             CategoryId = input.CategoryId,
             Code = input.Code,
             Name = input.Name,
-            AttributesSchema = input.AttributesSchema,
             GeometryKind = input.GeometryKind,
         };
 
@@ -177,7 +173,6 @@ public static class ObjectTypesEndpoints
         entity.CategoryId = input.CategoryId;
         entity.Code = input.Code;
         entity.Name = input.Name;
-        entity.AttributesSchema = input.AttributesSchema;
         entity.GeometryKind = input.GeometryKind;
 
         await audit.WriteAsync(
@@ -246,16 +241,7 @@ public static class ObjectTypesEndpoints
             objectType.CategoryId,
             objectType.Code,
             objectType.Name,
-            ParseSchema(objectType.AttributesSchema),
             objectType.GeometryKind);
-
-    /// <summary>jsonb из БД отдаётся в ответе объектом, а не строкой.</summary>
-    private static JsonElement ParseSchema(string json)
-    {
-        using var document = JsonDocument.Parse(json);
-
-        return document.RootElement.Clone();
-    }
 }
 
 /// <summary>Элемент ответа по схеме <c>ObjectType</c>.</summary>
@@ -264,5 +250,4 @@ internal sealed record ObjectTypeResponse(
     Guid CategoryId,
     string Code,
     string Name,
-    JsonElement AttributesSchema,
     string GeometryKind);

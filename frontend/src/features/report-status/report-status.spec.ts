@@ -14,7 +14,6 @@ const CARD: MapObjectCard = {
   geometry: { type: 'Point', coordinates: [37.8, 48.01] },
   address: 'пр. Ленинский, 12',
   status: null,
-  attributes: {},
   sources: [
     {
       id: 'src-1',

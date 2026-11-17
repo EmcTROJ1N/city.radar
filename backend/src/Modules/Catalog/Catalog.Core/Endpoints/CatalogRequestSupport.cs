@@ -5,8 +5,6 @@ using BuildingBlocks.Web;
 
 using Catalog.Core.Services;
 
-using Json.Schema;
-
 using Microsoft.AspNetCore.Http;
 
 namespace Catalog.Core.Endpoints;
@@ -25,7 +23,7 @@ internal static partial class CatalogRequestSupport
     private static readonly HashSet<string> ObjectTypeFields =
         new(StringComparer.Ordinal)
         {
-            "categoryId", "code", "name", "attributesSchema", "geometryKind",
+            "categoryId", "code", "name", "geometryKind",
         };
 
     private static readonly HashSet<string> ObjectGroupFields =
@@ -52,7 +50,7 @@ internal static partial class CatalogRequestSupport
     private static readonly HashSet<string> MapObjectFields =
         new(StringComparer.Ordinal)
         {
-            "name", "objectTypeId", "groupId", "coverageKind", "geometry", "attributes",
+            "name", "objectTypeId", "groupId", "coverageKind", "geometry",
             "address", "isActive", "sourceIds",
         };
 
@@ -101,8 +99,7 @@ internal static partial class CatalogRequestSupport
     }
 
     /// <summary>
-    /// Разбирает <c>ObjectTypeInput</c>: <c>categoryId</c>, <c>code</c>, <c>name</c> обязательны;
-    /// <c>attributesSchema</c> проверяется как валидная JSON Schema.
+    /// Разбирает <c>ObjectTypeInput</c>: <c>categoryId</c>, <c>code</c>, <c>name</c> обязательны.
     /// </summary>
     public static ObjectTypeInput? ReadObjectType(
         JsonElement root,
@@ -114,11 +111,10 @@ internal static partial class CatalogRequestSupport
         var categoryId = ReadRequiredGuid(root, "categoryId", errors);
         code = ReadCode(root, errors);
         var name = ReadName(root, errors);
-        var attributesSchema = ReadAttributesSchema(root, errors);
         var geometryKind = ReadGeometryKind(root, errors);
 
         return errors.Count == 0
-            ? new ObjectTypeInput(categoryId!.Value, code!, name!, attributesSchema!, geometryKind!)
+            ? new ObjectTypeInput(categoryId!.Value, code!, name!, geometryKind!)
             : null;
     }
 
@@ -176,7 +172,6 @@ internal static partial class CatalogRequestSupport
         var groupId = ReadOptionalGuid(root, "groupId", errors);
         var coverageKind = ReadCoverageKind(root, errors);
         var geometry = ReadGeometry(root, coverageKind, errors);
-        var attributes = ReadAttributes(root, errors);
         var address = ReadAddress(root, errors);
         var isActive = ReadOptionalBool(root, "isActive", errors) ?? true;
         var sourceIds = ReadSourceIds(root, errors);
@@ -188,7 +183,6 @@ internal static partial class CatalogRequestSupport
                 groupId,
                 coverageKind!,
                 geometry!,
-                attributes!,
                 address,
                 isActive,
                 sourceIds!)
@@ -230,27 +224,6 @@ internal static partial class CatalogRequestSupport
         }
 
         return GeoJson.TryParse(value, coverageKind, errors, out var geometry) ? geometry : null;
-    }
-
-    /// <summary>
-    /// Атрибуты — необязательный JSON-объект (по умолчанию <c>{}</c>). Схема типа проверяется
-    /// в сервисе: для этого нужна загруженная запись <c>object_types</c>.
-    /// </summary>
-    private static string? ReadAttributes(JsonElement root, List<ValidationError> errors)
-    {
-        if (!root.TryGetProperty("attributes", out var value) || value.ValueKind == JsonValueKind.Null)
-        {
-            return "{}";
-        }
-
-        if (value.ValueKind != JsonValueKind.Object)
-        {
-            errors.Add(new ValidationError("attributes", "Ожидается JSON-объект атрибутов"));
-
-            return null;
-        }
-
-        return value.GetRawText();
     }
 
     /// <summary>Адрес необязателен.</summary>
@@ -415,63 +388,6 @@ internal static partial class CatalogRequestSupport
         }
 
         return kind;
-    }
-
-    /// <summary>
-    /// JSON Schema атрибутов: необязательное поле, по умолчанию <c>{}</c>. Проверяется
-    /// пакетом JsonSchema.Net — тем же, которым будут валидироваться атрибуты фиксаций.
-    /// </summary>
-    private static string? ReadAttributesSchema(JsonElement root, List<ValidationError> errors)
-    {
-        if (!root.TryGetProperty("attributesSchema", out var value))
-        {
-            return "{}";
-        }
-
-        if (value.ValueKind == JsonValueKind.Null)
-        {
-            errors.Add(new ValidationError("attributesSchema", "Поле не может быть null"));
-
-            return null;
-        }
-
-        if (value.ValueKind != JsonValueKind.Object)
-        {
-            errors.Add(new ValidationError(
-                "attributesSchema",
-                "Ожидается JSON Schema — объект"));
-
-            return null;
-        }
-
-        var rawSchema = value.GetRawText();
-
-        try
-        {
-            _ = JsonSchema.FromText(rawSchema);
-        }
-        catch (JsonException)
-        {
-            errors.Add(new ValidationError("attributesSchema", "Некорректный JSON документа схемы"));
-
-            return null;
-        }
-        catch (JsonSchemaException exception)
-        {
-            errors.Add(new ValidationError(
-                "attributesSchema",
-                $"Некорректная JSON Schema: {exception.Message}"));
-
-            return null;
-        }
-        catch (ArgumentException)
-        {
-            errors.Add(new ValidationError("attributesSchema", "Некорректная JSON Schema"));
-
-            return null;
-        }
-
-        return rawSchema;
     }
 
     private static void RejectUnknownFields(
@@ -656,7 +572,6 @@ internal sealed record ObjectTypeInput(
     Guid CategoryId,
     string Code,
     string Name,
-    string AttributesSchema,
     string GeometryKind);
 
 /// <summary>Тело <c>ObjectGroupInput</c> после проверки.</summary>
@@ -683,7 +598,6 @@ internal sealed record MapObjectInput(
     Guid? GroupId,
     string CoverageKind,
     NetTopologySuite.Geometries.Geometry Geometry,
-    string Attributes,
     string? Address,
     bool IsActive,
     IReadOnlyList<Guid> SourceIds);

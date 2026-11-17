@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { MapObject, ObjectType } from '@shared/api/types';
 import {
-  attributeFields,
   emptyMapObjectForm,
   formFromObject,
   geometryMismatch,
@@ -19,7 +18,6 @@ const OBJECT: MapObject = {
   groupId: null,
   coverageKind: 'point',
   geometry: { type: 'Point', coordinates: [37.8, 48.01] },
-  attributes: { pressure: 3 },
   address: 'пр. Ленинский, 12',
   isActive: true,
   sourceIds: ['src-1', 'src-2'],
@@ -35,18 +33,15 @@ describe('formFromObject', () => {
     expect(value.objectTypeId).toBe('type-1');
     expect(value.groupId).toBeNull();
     expect(value.address).toBe('пр. Ленинский, 12');
-    expect(value.attributes).toEqual({ pressure: 3 });
     expect(value.isActive).toBe(true);
     expect(value.sourceIds).toEqual(['src-1', 'src-2']);
   });
 
-  it('не отдаёт ссылки на массивы и атрибуты исходной фиксации', () => {
+  it('не отдаёт ссылки на массивы исходной фиксации', () => {
     const value = formFromObject(OBJECT);
     value.sourceIds.push('src-3');
-    value.attributes['pressure'] = 1;
 
     expect(OBJECT.sourceIds).toEqual(['src-1', 'src-2']);
-    expect(OBJECT.attributes['pressure']).toBe(3);
   });
 });
 
@@ -68,7 +63,6 @@ describe('inputFromForm', () => {
       groupId: null,
       coverageKind: 'point',
       geometry: { type: 'Point', coordinates: [37.8, 48.01] },
-      attributes: {},
       address: 'ул. Садовая, 1',
       isActive: true,
       sourceIds: ['src-1', 'src-2'],
@@ -152,40 +146,6 @@ describe('sourceDiff', () => {
   });
 });
 
-describe('attributeFields', () => {
-  it('разбирает свойства JSON Schema', () => {
-    expect(
-      attributeFields({
-        type: 'object',
-        properties: {
-          pressure: { type: 'number', title: 'Давление' },
-          note: { type: 'string' },
-          broken: { type: 'boolean' },
-          mode: { type: 'string', enum: ['auto', 'manual'], title: 'Режим' },
-        },
-      }),
-    ).toEqual([
-      { key: 'pressure', label: 'Давление', kind: 'number', options: [] },
-      { key: 'note', label: 'note', kind: 'string', options: [] },
-      { key: 'broken', label: 'broken', kind: 'boolean', options: [] },
-      {
-        key: 'mode',
-        label: 'Режим',
-        kind: 'enum',
-        options: [
-          { value: 'auto', label: 'auto' },
-          { value: 'manual', label: 'manual' },
-        ],
-      },
-    ]);
-  });
-
-  it('без properties возвращает пустой список', () => {
-    expect(attributeFields(null)).toEqual([]);
-    expect(attributeFields({ type: 'object' })).toEqual([]);
-  });
-});
-
 describe('geometryMismatch', () => {
   const type = (geometryKind: ObjectType['geometryKind']): ObjectType => ({
     id: 't',
@@ -193,7 +153,6 @@ describe('geometryMismatch', () => {
     code: 'code',
     name: 'Тип',
     geometryKind,
-    attributesSchema: {},
   });
 
   it('предупреждает только при конкретном несовпадающем виде', () => {

@@ -70,10 +70,6 @@ internal sealed class ObjectTypeConfiguration : IEntityTypeConfiguration<ObjectT
         builder.Property(objectType => objectType.CategoryId).HasColumnType("uuid");
         builder.Property(objectType => objectType.Code).HasColumnType("text").IsRequired();
         builder.Property(objectType => objectType.Name).HasColumnType("text").IsRequired();
-        builder.Property(objectType => objectType.AttributesSchema)
-            .HasColumnType("jsonb")
-            .IsRequired()
-            .HasDefaultValueSql("'{}'");
         builder.Property(objectType => objectType.GeometryKind)
             .HasColumnType("text")
             .IsRequired()
@@ -175,10 +171,6 @@ internal sealed class MapObjectConfiguration : IEntityTypeConfiguration<MapObjec
         builder.Property(mapObject => mapObject.Geometry)
             .HasColumnType("geography (Geometry, 4326)")
             .IsRequired();
-        builder.Property(mapObject => mapObject.Attributes)
-            .HasColumnType("jsonb")
-            .IsRequired()
-            .HasDefaultValueSql("'{}'");
         builder.Property(mapObject => mapObject.Address).HasColumnType("text");
         builder.Property(mapObject => mapObject.IsActive)
             .HasColumnType("boolean")
@@ -194,9 +186,6 @@ internal sealed class MapObjectConfiguration : IEntityTypeConfiguration<MapObjec
         builder.HasIndex(mapObject => mapObject.Geometry)
             .HasMethod("gist")
             .HasDatabaseName("map_objects_geometry_gist");
-        builder.HasIndex(mapObject => mapObject.Attributes)
-            .HasMethod("gin")
-            .HasDatabaseName("map_objects_attributes_gin");
         builder.HasIndex(mapObject => mapObject.Name)
             .HasMethod("gin")
             .HasOperators("gin_trgm_ops")

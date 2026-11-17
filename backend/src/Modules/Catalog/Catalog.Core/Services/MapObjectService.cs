@@ -10,8 +10,6 @@ using Catalog.Core.Endpoints;
 
 using IdentityAccess.Contracts;
 
-using Json.Schema;
-
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 
@@ -164,7 +162,6 @@ internal sealed class MapObjectService(
             Name = input.Name,
             CoverageKind = input.CoverageKind,
             Geometry = input.Geometry,
-            Attributes = input.Attributes,
             Address = input.Address,
             IsActive = input.IsActive,
             CreatedBy = currentUser.UserId,
@@ -228,7 +225,6 @@ internal sealed class MapObjectService(
         entity.Name = input.Name;
         entity.CoverageKind = input.CoverageKind;
         entity.Geometry = input.Geometry;
-        entity.Attributes = input.Attributes;
         entity.Address = input.Address;
         entity.IsActive = input.IsActive;
 
@@ -405,7 +401,7 @@ internal sealed class MapObjectService(
     }
 
     /// <summary>
-    /// Ссылочные проверки входа: тип объекта (geometryKind и JSON Schema атрибутов), группа
+    /// Ссылочные проверки входа: тип объекта (geometryKind), группа
     /// и привязанные источники. Несуществующий <c>objectTypeId</c>/<c>groupId</c>/источник —
     /// 422 по контракту.
     /// </summary>
@@ -468,75 +464,7 @@ internal sealed class MapObjectService(
                 "Тип объекта принимает только полигон, точка недопустима"));
         }
 
-        errors.AddRange(ValidateAttributes(objectType.AttributesSchema, input.Attributes));
-
         return errors;
-    }
-
-    /// <summary>Проверка атрибутов по JSON Schema типа объекта.</summary>
-    private static IReadOnlyList<ValidationError> ValidateAttributes(
-        string schemaJson,
-        string attributesJson)
-    {
-        JsonSchema schema;
-        try
-        {
-            schema = JsonSchema.FromText(schemaJson);
-        }
-        catch (Exception exception) when (exception is JsonException or JsonSchemaException or ArgumentException)
-        {
-            return [new ValidationError("attributes", "Схема атрибутов типа некорректна")];
-        }
-
-        JsonDocument document;
-        try
-        {
-            document = JsonDocument.Parse(attributesJson);
-        }
-        catch (JsonException)
-        {
-            return [new ValidationError("attributes", "Ожидается JSON-объект атрибутов")];
-        }
-
-        using (document)
-        {
-            var results = schema.Evaluate(
-                document.RootElement,
-                new EvaluationOptions { OutputFormat = OutputFormat.List });
-
-            if (results.IsValid)
-            {
-                return [];
-            }
-
-            return [new ValidationError("attributes", DescribeSchemaErrors(results))];
-        }
-    }
-
-    private static string DescribeSchemaErrors(EvaluationResults results)
-    {
-        var messages = new List<string>();
-        CollectSchemaErrors(results, messages);
-
-        return messages.Count == 0
-            ? "Атрибуты не соответствуют схеме типа"
-            : string.Join("; ", messages.Take(5));
-    }
-
-    private static void CollectSchemaErrors(EvaluationResults results, List<string> messages)
-    {
-        if (results.Errors is { Count: > 0 } errors)
-        {
-            foreach (var (keyword, message) in errors)
-            {
-                messages.Add($"{results.InstanceLocation}: {keyword}: {message}");
-            }
-        }
-
-        foreach (var detail in results.Details ?? [])
-        {
-            CollectSchemaErrors(detail, messages);
-        }
     }
 
     private async Task<Dictionary<Guid, IReadOnlyList<Guid>>> ReadSourceIdsAsync(
@@ -597,7 +525,6 @@ internal sealed class MapObjectService(
             mapObject.GroupId,
             mapObject.CoverageKind,
             GeoJson.ToGeoJson(mapObject.Geometry),
-            ParseJson(mapObject.Attributes),
             mapObject.Address,
             mapObject.IsActive,
             sourceIds);
@@ -610,16 +537,8 @@ internal sealed class MapObjectService(
             mapObject.GroupId,
             mapObject.CoverageKind,
             mapObject.Geometry.AsText(),
-            ParseJson(mapObject.Attributes),
             mapObject.Address,
             mapObject.IsActive);
-
-    private static JsonElement ParseJson(string json)
-    {
-        using var document = JsonDocument.Parse(json);
-
-        return document.RootElement.Clone();
-    }
 }
 
 /// <summary>Фильтры редакторского списка фиксаций (<c>GET /catalog/objects</c>).</summary>
@@ -640,7 +559,6 @@ internal sealed record MapObjectResponse(
     Guid? GroupId,
     string CoverageKind,
     JsonElement Geometry,
-    JsonElement Attributes,
     string? Address,
     bool IsActive,
     IReadOnlyList<Guid> SourceIds);
@@ -652,6 +570,5 @@ internal sealed record MapObjectAuditSnapshot(
     Guid? GroupId,
     string CoverageKind,
     string Geometry,
-    JsonElement Attributes,
     string? Address,
     bool IsActive);

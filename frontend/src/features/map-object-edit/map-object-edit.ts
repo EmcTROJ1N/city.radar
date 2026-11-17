@@ -14,11 +14,9 @@ import { FormError } from '@shared/ui/form-error';
 import { Icon } from '@shared/ui/icon';
 import { ToastService } from '@shared/ui/toast';
 import {
-  AttributeField,
   COVERAGE,
   MapObjectFormValue,
   SourceDiff,
-  attributeFields,
   emptyMapObjectForm,
   formFromObject,
   geometryMismatch,
@@ -33,7 +31,6 @@ const SHOWN_FIELDS = [
   'groupId',
   'coverageKind',
   'geometry',
-  'attributes',
   'address',
   'isActive',
   'sourceIds',
@@ -41,19 +38,6 @@ const SHOWN_FIELDS = [
 
 function formatCoordinate(value: number): string {
   return String(Number(value.toFixed(6)));
-}
-
-function parseAttributes(raw: string): { value: Record<string, unknown> } | { error: string } {
-  if (!raw.trim()) return { value: {} };
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-      return { error: 'Атрибуты должны быть JSON-объектом' };
-    }
-    return { value: parsed as Record<string, unknown> };
-  } catch {
-    return { error: 'Некорректный JSON' };
-  }
 }
 
 /** Форма фиксации: поля, геометрия на карте и привязка источников. */
@@ -145,81 +129,6 @@ function parseAttributes(raw: string): { value: Record<string, unknown> } | { er
         <app-field-error [error]="apiError()" field="address" />
       </div>
 
-      <section class="stack attributes" aria-label="Атрибуты">
-        <h3>Атрибуты</h3>
-        @if (attributeFields().length) {
-          @for (field of attributeFields(); track field.key) {
-            <div class="field">
-              <label [for]="'mo-attr-' + field.key">{{ field.label }}</label>
-              @switch (field.kind) {
-                @case ('boolean') {
-                  <label class="row checkbox">
-                    <input
-                      type="checkbox"
-                      [id]="'mo-attr-' + field.key"
-                      [checked]="attributeChecked(field.key)"
-                      (change)="setAttribute(field.key, $any($event.target).checked)"
-                    />
-                    Да
-                  </label>
-                }
-                @case ('enum') {
-                  <select
-                    [id]="'mo-attr-' + field.key"
-                    [value]="attributeText(field.key)"
-                    (change)="setAttribute(field.key, $any($event.target).value)"
-                  >
-                    <option value="">Не задано</option>
-                    @for (option of field.options; track option.value) {
-                      <option [value]="option.value">{{ option.label }}</option>
-                    }
-                  </select>
-                }
-                @case ('number') {
-                  <input
-                    type="number"
-                    step="any"
-                    [id]="'mo-attr-' + field.key"
-                    [value]="attributeText(field.key)"
-                    (input)="setNumber(field.key, $any($event.target).value, field)"
-                  />
-                }
-                @case ('integer') {
-                  <input
-                    type="number"
-                    step="1"
-                    [id]="'mo-attr-' + field.key"
-                    [value]="attributeText(field.key)"
-                    (input)="setNumber(field.key, $any($event.target).value, field)"
-                  />
-                }
-                @default {
-                  <input
-                    type="text"
-                    [id]="'mo-attr-' + field.key"
-                    [value]="attributeText(field.key)"
-                    (input)="setAttribute(field.key, $any($event.target).value)"
-                  />
-                }
-              }
-            </div>
-          }
-        } @else {
-          <div class="field">
-            <label for="mo-attributes">Атрибуты (JSON)</label>
-            <textarea
-              id="mo-attributes"
-              [value]="attributesJson()"
-              (input)="onAttributesJson($any($event.target).value)"
-              spellcheck="false"
-            ></textarea>
-            @if (attributesJsonError(); as message) { <span class="err">{{ message }}</span> }
-            <span class="hint">JSON-объект; для типа без схемы сохраняется как есть.</span>
-          </div>
-        }
-        <app-field-error [error]="apiError()" field="attributes" />
-      </section>
-
       <div class="field">
         <label>Источники данных</label>
         <app-entity-picker
@@ -255,9 +164,7 @@ function parseAttributes(raw: string): { value: Record<string, unknown> } | { er
   styles: `
     :host { display: block; }
     .geometry { padding: 10px; border: 1px dashed var(--line); border-radius: var(--r-md); }
-    .attributes h3 { font-size: 14px; }
     .checkbox { gap: 6px; font-size: 13px; }
-    .err { color: var(--st-none); font-size: 12px; }
     .actions { padding-top: 4px; }
     input[type='checkbox'] { width: 16px; height: 16px; }
   `,
@@ -289,9 +196,6 @@ export class MapObjectEdit {
   readonly geometry = signal<MapGeometry | null>(null);
   readonly sourceIds = signal<string[]>([]);
   readonly sourceLabels = signal<Record<string, string>>({});
-  readonly attributes = signal<Record<string, unknown>>({});
-  readonly attributesJson = signal('{}');
-  readonly attributesJsonError = signal<string | null>(null);
   readonly apiError = signal<ApiError | null>(null);
   readonly saving = signal(false);
   readonly lon = signal('');
@@ -313,7 +217,6 @@ export class MapObjectEdit {
   readonly selectedType = computed(
     () => this.objectTypes().find((type) => type.id === this.objectTypeId()) ?? null,
   );
-  readonly attributeFields = computed(() => attributeFields(this.selectedType()?.attributesSchema));
   readonly typeMismatch = computed(() => geometryMismatch(this.selectedType(), this.coverageKind()));
   readonly vertices = computed(() => polygonVertexCount(this.geometry()));
   readonly geometryHint = computed(() =>
@@ -397,46 +300,6 @@ export class MapObjectEdit {
     return 'любой вид';
   }
 
-  protected attributeText(key: string): string {
-    const value = this.attributes()[key];
-    return value === undefined || value === null ? '' : String(value);
-  }
-
-  protected attributeChecked(key: string): boolean {
-    return this.attributes()[key] === true;
-  }
-
-  protected setAttribute(key: string, value: unknown): void {
-    this.attributes.update((attributes) => {
-      const next = { ...attributes };
-      if (value === '' || value === null || value === undefined) delete next[key];
-      else next[key] = value;
-      return next;
-    });
-    this.syncAttributesJson();
-  }
-
-  protected setNumber(key: string, raw: string, field: AttributeField): void {
-    if (!raw.trim()) {
-      this.setAttribute(key, null);
-      return;
-    }
-    const value = Number(raw.replace(',', '.'));
-    if (!Number.isFinite(value)) return;
-    this.setAttribute(key, field.kind === 'integer' ? Math.trunc(value) : value);
-  }
-
-  protected onAttributesJson(raw: string): void {
-    this.attributesJson.set(raw);
-    const parsed = parseAttributes(raw);
-    if ('error' in parsed) {
-      this.attributesJsonError.set(parsed.error);
-      return;
-    }
-    this.attributesJsonError.set(null);
-    this.attributes.set(parsed.value);
-  }
-
   protected onLon(raw: string): void {
     this.lon.set(raw);
     this.syncManualPoint();
@@ -468,7 +331,6 @@ export class MapObjectEdit {
       objectTypeId: this.form.controls.objectTypeId.value || null,
       groupId: this.form.controls.groupId.value || null,
       address: this.form.controls.address.value,
-      attributes: this.attributes(),
       isActive: this.form.controls.isActive.value,
       sourceIds: this.sourceIds(),
     };
@@ -554,9 +416,6 @@ export class MapObjectEdit {
   private apply(object: MapObject | null, isNew: boolean): void {
     const value = !isNew && object ? formFromObject(object) : emptyMapObjectForm();
     this.originalSourceIds = [...value.sourceIds];
-    this.attributes.set({ ...value.attributes });
-    this.attributesJson.set(JSON.stringify(value.attributes, null, 2));
-    this.attributesJsonError.set(null);
     this.sourceIds.set([...value.sourceIds]);
     this.coverageKind.set(value.coverageKind);
     this.geometry.set(value.geometry);
@@ -593,11 +452,6 @@ export class MapObjectEdit {
     const geometry: MapGeometry = { type: 'Point', coordinates: [lon, lat] };
     this.geometry.set(geometry);
     this.drawInitial.set(geometry);
-  }
-
-  private syncAttributesJson(): void {
-    this.attributesJson.set(JSON.stringify(this.attributes(), null, 2));
-    this.attributesJsonError.set(null);
   }
 
   private async loadSourceLabels(ids: string[]): Promise<void> {

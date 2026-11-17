@@ -116,12 +116,11 @@ create table categories (
 );
 
 create table object_types (
-  id                uuid primary key default gen_random_uuid(),
-  category_id       uuid not null references categories(id),
-  code              text not null unique,
-  name              text not null,
-  attributes_schema jsonb not null default '{}',   -- JSON Schema атрибутов
-  geometry_kind     text not null default 'any' check (geometry_kind in ('point', 'polygon', 'any'))
+  id            uuid primary key default gen_random_uuid(),
+  category_id   uuid not null references categories(id),
+  code          text not null unique,
+  name          text not null,
+  geometry_kind text not null default 'any' check (geometry_kind in ('point', 'polygon', 'any'))
 );
 
 create table object_groups (
@@ -141,7 +140,6 @@ create table map_objects (
   name           text not null,
   coverage_kind  text not null check (coverage_kind in ('point', 'polygon')),
   geometry       geography(Geometry, 4326) not null,
-  attributes     jsonb not null default '{}',
   address        text,
   is_active      boolean not null default true,
   created_by     uuid references users(id),
@@ -153,7 +151,6 @@ create table map_objects (
   )
 );
 create index map_objects_geometry_gist on map_objects using gist (geometry);
-create index map_objects_attributes_gin on map_objects using gin (attributes);
 create index map_objects_name_trgm on map_objects using gin (name gin_trgm_ops);
 create index map_objects_group_idx on map_objects (group_id);
 create trigger map_objects_updated before update on map_objects

@@ -9,7 +9,7 @@ namespace Api.IntegrationTests.Catalog;
 
 /// <summary>
 /// Типы объектов каталога: CRUD, публичное чтение, права,
-/// дубль кода, проверка JSON Schema, <c>categoryId</c>, <c>geometryKind</c> и аудит.
+/// дубль кода, <c>categoryId</c>, <c>geometryKind</c> и аудит.
 /// </summary>
 [Collection("postgres")]
 public sealed class ObjectTypesTests(PostgresFixture fixture) : IAsyncLifetime
@@ -41,7 +41,6 @@ public sealed class ObjectTypesTests(PostgresFixture fixture) : IAsyncLifetime
             token,
             $$"""
               {"categoryId":"{{categoryId}}","code":"{{code}}","name":"{{name}}",
-               "attributesSchema":{"type":"object","properties":{"capacity":{"type":"number"} } },
                "geometryKind":"polygon"}
               """,
             ct))
@@ -54,7 +53,6 @@ public sealed class ObjectTypesTests(PostgresFixture fixture) : IAsyncLifetime
             objectType.GetProperty("code").GetString().ShouldBe(code);
             objectType.GetProperty("name").GetString().ShouldBe(name);
             objectType.GetProperty("geometryKind").GetString().ShouldBe("polygon");
-            objectType.GetProperty("attributesSchema").GetProperty("type").GetString().ShouldBe("object");
         }
 
         using (var response = await _api.GetAsync("/api/v1/catalog/object-types", accessToken: null, ct))
@@ -74,7 +72,7 @@ public sealed class ObjectTypesTests(PostgresFixture fixture) : IAsyncLifetime
             token,
             $$"""
               {"categoryId":"{{categoryId}}","code":"{{code}}","name":"{{name}} обновлён",
-               "attributesSchema":{},"geometryKind":"point"}
+               "geometryKind":"point"}
               """,
             ct))
         {
@@ -83,9 +81,6 @@ public sealed class ObjectTypesTests(PostgresFixture fixture) : IAsyncLifetime
             var objectType = await CatalogApi.ReadJsonAsync(response, ct);
             objectType.GetProperty("name").GetString().ShouldBe($"{name} обновлён");
             objectType.GetProperty("geometryKind").GetString().ShouldBe("point");
-            objectType.GetProperty("attributesSchema")
-                .EnumerateObject()
-                .ShouldBeEmpty();
         }
 
         var createEntry = await _api.FindAuditAsync("catalog.objecttype.create", id.ToString(), ct);
@@ -214,36 +209,6 @@ public sealed class ObjectTypesTests(PostgresFixture fixture) : IAsyncLifetime
             response.StatusCode.ShouldBe(HttpStatusCode.Conflict);
             response.Content.Headers.ContentType?.MediaType.ShouldBe("application/problem+json");
         }
-    }
-
-    [Fact]
-    public async Task Invalid_attributes_schema_422()
-    {
-        var ct = CancellationToken.None;
-        var token = await _api.ModeratorTokenAsync(ct);
-        var suffix = CatalogApi.NewSuffix();
-        var categoryId = await _api.CreateCategoryAsync(token, $"cat_{suffix}", "Категория", ct);
-        var code = $"type_{suffix}";
-
-        using var response = await _api.SendAsync(
-            HttpMethod.Post,
-            "/api/v1/catalog/object-types",
-            token,
-            $$"""
-              {"categoryId":"{{categoryId}}","code":"{{code}}","name":"Тип",
-               "attributesSchema":{"type":"nonsense"} }
-              """,
-            ct);
-
-        response.StatusCode.ShouldBe(HttpStatusCode.UnprocessableEntity);
-        response.Content.Headers.ContentType?.MediaType.ShouldBe("application/problem+json");
-
-        var json = await CatalogApi.ReadJsonAsync(response, ct);
-        json.GetProperty("errors").EnumerateArray()
-            .ShouldContain(error => error.GetProperty("field").GetString() == "attributesSchema");
-
-        (await _api.CountAsync($"select count(*) from object_types where code = '{code}'", ct))
-            .ShouldBe(0L);
     }
 
     [Fact]

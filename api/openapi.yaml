@@ -1060,7 +1060,7 @@ paths:
       tags: [Catalog]
       operationId: createCatalogObject
       summary: Создать фиксацию на карте
-      description: Атрибуты проверяются по JSON Schema типа объекта. Источники можно привязать сразу (`sourceIds`).
+      description: Источники можно привязать сразу (`sourceIds`).
       x-permission: catalog.object.manage
       requestBody:
         required: true
@@ -1794,11 +1794,8 @@ components:
       allOf:
         - $ref: '#/components/schemas/MapFeature'
         - type: object
-          required: [attributes, sources]
+          required: [sources]
           properties:
-            attributes:
-              type: object
-              additionalProperties: true
             sources:
               type: array
               items: { $ref: '#/components/schemas/SourceCardView' }
@@ -2332,10 +2329,6 @@ components:
         categoryId: { type: string, format: uuid }
         code: { type: string, pattern: '^[a-z0-9_]+$' }
         name: { $ref: '#/components/schemas/NonEmptyText' }
-        attributesSchema:
-          type: object
-          additionalProperties: true
-          description: JSON Schema атрибутов фиксаций этого типа
         geometryKind:
           type: string
           enum: [point, polygon, any]
@@ -2348,10 +2341,6 @@ components:
         categoryId: { type: string, format: uuid }
         code: { type: string, pattern: '^[a-z0-9_]+$' }
         name: { $ref: '#/components/schemas/NonEmptyText' }
-        attributesSchema:
-          type: object
-          additionalProperties: true
-          description: JSON Schema атрибутов фиксаций этого типа
         geometryKind:
           type: string
           enum: [point, polygon, any]
@@ -2411,10 +2400,6 @@ components:
         groupId: { type: [string, 'null'], format: uuid }
         coverageKind: { $ref: '#/components/schemas/CoverageKind' }
         geometry: { $ref: '#/components/schemas/Geometry' }
-        attributes:
-          type: object
-          additionalProperties: true
-          default: {}
         address: { $ref: '#/components/schemas/Text' }
         isActive: { type: boolean, default: true }
         sourceIds:
@@ -2431,7 +2416,7 @@ components:
     MapObject:
       type: object
       description: Фиксация в редакторском виде
-      required: [id, name, coverageKind, geometry, attributes, isActive, sourceIds]
+      required: [id, name, coverageKind, geometry, isActive, sourceIds]
       properties:
         id: { type: string, format: uuid }
         name: { $ref: '#/components/schemas/NonEmptyText' }
@@ -2439,7 +2424,6 @@ components:
         groupId: { type: [string, 'null'], format: uuid }
         coverageKind: { $ref: '#/components/schemas/CoverageKind' }
         geometry: { $ref: '#/components/schemas/Geometry' }
-        attributes: { type: object, additionalProperties: true }
         address: { type: [string, 'null'] }
         isActive: { type: boolean }
         sourceIds:

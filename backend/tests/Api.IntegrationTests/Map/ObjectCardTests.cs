@@ -86,10 +86,7 @@ public sealed class ObjectCardTests(PostgresFixture fixture) : IAsyncLifetime
         card.GetProperty("id").GetGuid().ShouldBe(objectId);
         card.GetProperty("coverageKind").GetString().ShouldBe("point");
         card.GetProperty("geometry").GetProperty("type").GetString().ShouldBe("Point");
-
-        //: ссылка на дисклеймер в attributes.
-        card.GetProperty("attributes").GetProperty("disclaimerUrl").GetString()
-            .ShouldBe("/disclaimer");
+        card.TryGetProperty("attributes", out _).ShouldBeFalse();
     }
 
     [Fact]

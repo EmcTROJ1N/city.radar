@@ -9,7 +9,6 @@ import { FieldError } from '@shared/ui/field-error';
 import { FormError } from '@shared/ui/form-error';
 import { Icon } from '@shared/ui/icon';
 import { ToastService } from '@shared/ui/toast';
-import { EXAMPLE_SCHEMA, parseAttributesSchema } from './attributes-schema';
 
 type GeometryKind = ObjectTypeInput['geometryKind'];
 
@@ -25,21 +24,20 @@ interface Draft {
   code: string;
   name: string;
   geometryKind: GeometryKind;
-  schemaText: string;
 }
 
-/** Типы объектов и JSON-схема их атрибутов. */
+/** Типы объектов: категория, код и допустимый вид геометрии. */
 @Component({
   selector: 'app-catalog-object-types',
   imports: [FormsModule, Icon, FieldError, FormError],
   template: `
     <div class="section-head">
-      <div><h2>Типы объектов</h2><small>Задают геометрию фиксаций и схему дополнительных атрибутов.</small></div>
+      <div><h2>Типы объектов</h2><small>Задают геометрию фиксаций.</small></div>
       <button class="btn btn--primary" type="button" (click)="create()"><app-icon name="plus" />Добавить</button>
     </div>
 
     <div class="split">
-      <div class="card card--flush table-wrap">
+      <div class="card card--flush table-wrap table-wrap--cards">
         @if (loadError(); as e) {
           <div class="pad">
             <div class="callout" role="alert">
@@ -53,14 +51,14 @@ interface Draft {
         } @else if (!rows().length) {
           <p class="empty">Типов объектов пока нет. Создайте первый.</p>
         } @else {
-          <table class="table">
+          <table class="table table--cards">
             <thead><tr><th>Название</th><th>Категория</th><th>Геометрия</th><th></th></tr></thead>
             <tbody>
               @for (t of rows(); track t.id) {
                 <tr class="is-clickable" [class.is-active]="draft()?.id === t.id" (click)="edit(t)">
-                  <td><strong>{{ t.name }}</strong><br /><small>{{ t.code }}</small></td>
-                  <td>{{ categoryName(t.categoryId) }}</td>
-                  <td><span class="chip">{{ geometryLabel(t.geometryKind) }}</span></td>
+                  <td class="cell-main"><strong>{{ t.name }}</strong><br /><small>{{ t.code }}</small></td>
+                  <td data-label="Категория">{{ categoryName(t.categoryId) }}</td>
+                  <td data-label="Геометрия"><span class="chip">{{ geometryLabel(t.geometryKind) }}</span></td>
                   <td class="actions">
                     <button class="btn btn--ghost btn--sm" type="button" (click)="edit(t); $event.stopPropagation()"><app-icon name="edit" />Изменить</button>
                   </td>
@@ -106,19 +104,6 @@ interface Draft {
             <app-field-error [error]="formError()" field="geometryKind" />
           </div>
 
-          <div class="field">
-            <label for="ot-schema">Схема атрибутов (JSON)</label>
-            <textarea id="ot-schema" name="attributesSchema" class="mono" spellcheck="false"
-              [ngModel]="d.schemaText" (ngModelChange)="patch({ schemaText: $event })"
-              placeholder='{"type":"object","properties":{}}'></textarea>
-            @if (schemaError()) { <p class="err">{{ schemaError() }}</p> }
-            <app-field-error [error]="formError()" field="attributesSchema" />
-            <div class="row">
-              <button class="btn btn--ghost btn--sm" type="button" (click)="insertExample()">Вставить пример</button>
-              <span class="hint">JSON-объект; пустое поле означает схему без атрибутов.</span>
-            </div>
-          </div>
-
           <app-form-error [error]="formError()" [fields]="fields" />
 
           <div class="row">
@@ -137,7 +122,6 @@ interface Draft {
     .pad { padding: var(--pad); }
     .err { font-size: 12px; color: var(--st-none); }
     small { color: var(--ink-3); }
-    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; min-height: 150px; }
   `,
 })
 export class CatalogObjectTypes {
@@ -147,7 +131,7 @@ export class CatalogObjectTypes {
   private readonly confirm = inject(ConfirmService);
 
   protected readonly geometry = GEOMETRY;
-  protected readonly fields = ['categoryId', 'code', 'name', 'geometryKind', 'attributesSchema'];
+  protected readonly fields = ['categoryId', 'code', 'name', 'geometryKind'];
   protected readonly text = errorText;
 
   protected readonly items = signal<ObjectType[]>([]);
@@ -170,16 +154,9 @@ export class CatalogObjectTypes {
     return '';
   });
 
-  protected readonly schemaError = computed(() => {
-    const d = this.draft();
-    if (!d) return '';
-    const parsed = parseAttributesSchema(d.schemaText);
-    return parsed.ok ? '' : parsed.error;
-  });
-
   protected readonly canSave = computed(() => {
     const d = this.draft();
-    return !!d && !this.saving() && !!d.categoryId && !!d.code.trim() && !this.nameError() && !this.schemaError();
+    return !!d && !this.saving() && !!d.categoryId && !!d.code.trim() && !this.nameError();
   });
 
   constructor() {
@@ -208,7 +185,6 @@ export class CatalogObjectTypes {
       code: '',
       name: '',
       geometryKind: 'any',
-      schemaText: '',
     });
   }
 
@@ -220,17 +196,12 @@ export class CatalogObjectTypes {
       code: type.code,
       name: type.name,
       geometryKind: type.geometryKind,
-      schemaText: type.attributesSchema ? JSON.stringify(type.attributesSchema, null, 2) : '',
     });
   }
 
   protected patch(part: Partial<Draft>): void {
     this.formError.set(null);
     this.draft.update((d) => (d ? { ...d, ...part } : d));
-  }
-
-  protected insertExample(): void {
-    this.patch({ schemaText: EXAMPLE_SCHEMA });
   }
 
   protected categoryName(id: string): string {
@@ -246,15 +217,11 @@ export class CatalogObjectTypes {
     const d = this.draft();
     if (!d || !this.canSave()) return;
 
-    const schema = parseAttributesSchema(d.schemaText);
-    if (!schema.ok) return;
-
     const body: ObjectTypeInput = {
       categoryId: d.categoryId,
       code: d.code.trim(),
       name: d.name.trim(),
       geometryKind: d.geometryKind,
-      attributesSchema: schema.value,
     };
 
     this.saving.set(true);
