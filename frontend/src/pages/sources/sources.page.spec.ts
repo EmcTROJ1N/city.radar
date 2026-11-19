@@ -98,7 +98,15 @@ describe('SourcesPage', () => {
     expect(fixture.nativeElement.querySelectorAll('tbody tr')).toHaveLength(1);
   });
 
-  it('по клику на строку открывает форму, статусы и состояние источника', async () => {
+  const buttonByText = (root: HTMLElement, text: string): HTMLButtonElement => {
+    const button = Array.from(root.querySelectorAll('button')).find((item) =>
+      item.textContent?.includes(text),
+    );
+    if (!button) throw new Error(`Кнопка «${text}» не найдена`);
+    return button;
+  };
+
+  it('по клику на строку показывает сводку и состояние, настройки и статусы — в окне', async () => {
     const fixture = TestBed.createComponent(SourcesPage);
     fixture.detectChanges();
     await fixture.whenStable();
@@ -111,10 +119,101 @@ describe('SourcesPage', () => {
     fixture.detectChanges();
 
     expect(health).toHaveBeenCalledWith('src-1');
-    expect(fixture.nativeElement.querySelector('app-source-form form')).not.toBeNull();
-    expect(fixture.nativeElement.querySelector('app-source-statuses')).not.toBeNull();
     expect(fixture.nativeElement.textContent).toContain('Состояние');
-    expect(fixture.nativeElement.textContent).toContain('Статусы источника');
+    // В колонке — только сводка: статусы плашками, без редактирования.
+    const summary = fixture.nativeElement.querySelector('.summary') as HTMLElement;
+    expect(summary.textContent).toContain('Вода есть');
+    expect(summary.textContent).toContain('@kalininsky_water');
+    expect(fixture.nativeElement.querySelector('app-source-form')).toBeNull();
+    expect(fixture.nativeElement.querySelector('app-source-statuses')).toBeNull();
+
+    buttonByText(fixture.nativeElement, 'Настройки').click();
+    fixture.detectChanges();
+    await settle();
+    fixture.detectChanges();
+
+    const dialog = fixture.nativeElement.querySelector('dialog.modal') as HTMLDialogElement;
+    expect(dialog.open).toBe(true);
+    expect(dialog.querySelector('app-source-form form')).not.toBeNull();
+    expect((dialog.querySelector('#sf-name') as HTMLInputElement).value).toBe('Чат жильцов Калининского');
+
+    // Статусы — вторая вкладка того же окна; форма при переключении не пересоздаётся.
+    const statusesPanel = dialog.querySelector('app-source-statuses')!.parentElement as HTMLElement;
+    expect(statusesPanel.hidden).toBe(true);
+    buttonByText(dialog, 'Статусы').click();
+    fixture.detectChanges();
+    expect(statusesPanel.hidden).toBe(false);
+    expect(dialog.textContent).toContain('Каждый статус сохраняется отдельно');
+    expect(dialog.querySelector('#sf-name')).not.toBeNull();
+
+    buttonByText(dialog, 'Закрыть').click();
+    fixture.detectChanges();
+    await settle();
+    fixture.detectChanges();
+
+    expect(dialog.open).toBe(false);
+    expect(fixture.nativeElement.querySelector('app-source-form')).toBeNull();
+    // Источник остаётся выбранным после закрытия окна.
+    expect(fixture.nativeElement.querySelector('.summary')).not.toBeNull();
+  });
+
+  it('промпт разворачивается в отдельное окно и правит то же поле', async () => {
+    const fixture = TestBed.createComponent(SourcesPage);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    await settle();
+    fixture.detectChanges();
+
+    (fixture.nativeElement.querySelector('tbody tr') as HTMLTableRowElement).click();
+    fixture.detectChanges();
+    buttonByText(fixture.nativeElement, 'Настройки').click();
+    fixture.detectChanges();
+    await settle();
+    fixture.detectChanges();
+
+    buttonByText(fixture.nativeElement, 'Развернуть').click();
+    fixture.detectChanges();
+    await settle();
+    fixture.detectChanges();
+
+    const promptDialog = fixture.nativeElement.querySelector('dialog.prompt-modal') as HTMLDialogElement;
+    expect(promptDialog.open).toBe(true);
+    const full = promptDialog.querySelector('#sf-prompt-full') as HTMLTextAreaElement;
+    expect(full.value).toBe('Ищи все упоминания про подачу воды.');
+
+    full.value = 'Новый длинный промпт';
+    full.dispatchEvent(new Event('input'));
+    buttonByText(promptDialog, 'Готово').click();
+    fixture.detectChanges();
+    await settle();
+    fixture.detectChanges();
+
+    expect(promptDialog.open).toBe(false);
+    expect((fixture.nativeElement.querySelector('#sf-prompt') as HTMLTextAreaElement).value).toBe(
+      'Новый длинный промпт',
+    );
+    // Окно настроек под промптом остаётся открытым.
+    expect((fixture.nativeElement.querySelector('dialog.modal') as HTMLDialogElement).open).toBe(true);
+  });
+
+  it('«Создать источник» открывает окно с пустой формой', async () => {
+    const fixture = TestBed.createComponent(SourcesPage);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    await settle();
+    fixture.detectChanges();
+
+    buttonByText(fixture.nativeElement, 'Создать источник').click();
+    fixture.detectChanges();
+    await settle();
+    fixture.detectChanges();
+
+    const dialog = fixture.nativeElement.querySelector('dialog.modal') as HTMLDialogElement;
+    expect(dialog.open).toBe(true);
+    expect(dialog.textContent).toContain('Новый источник');
+    expect((dialog.querySelector('#sf-name') as HTMLInputElement).value).toBe('');
+    // Новый источник создаётся вместе со статусами в самой форме — вкладок нет.
+    expect(dialog.querySelector('app-tabs')).toBeNull();
   });
 
   it('показывает пустое состояние, когда источников нет', async () => {
@@ -157,9 +256,12 @@ describe('SourcesPage', () => {
 
     (fixture.nativeElement.querySelector('tbody tr') as HTMLTableRowElement).click();
     fixture.detectChanges();
+    buttonByText(fixture.nativeElement, 'Настройки').click();
+    fixture.detectChanges();
     await settle();
     fixture.detectChanges();
 
+    expect(fixture.nativeElement.querySelector('#sf-name')).not.toBeNull();
     // Форма системного источника не показывает чат, промпт и удаление.
     expect(fixture.nativeElement.querySelector('#sf-chat')).toBeNull();
     expect(fixture.nativeElement.querySelector('#sf-prompt')).toBeNull();

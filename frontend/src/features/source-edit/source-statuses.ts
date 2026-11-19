@@ -28,19 +28,19 @@ interface StatusRow extends SourceStatusFormValue {
 
 let seq = 0;
 
-/** Статусы существующего источника: каждая строка сохраняется отдельным запросом. */
+/** Статусы существующего источника: каждая строка сохраняется отдельным запросом. Живёт во вкладке окна настроек. */
 @Component({
   selector: 'app-source-statuses',
   imports: [Icon, StatusBadge],
   template: `
-    <section class="card stack" aria-labelledby="source-statuses-title">
+    <section class="stack" aria-labelledby="source-statuses-title">
       <div>
-        <h2 id="source-statuses-title">Статусы источника</h2>
+        <h2 id="source-statuses-title" class="visually-hidden">Статусы источника</h2>
         <p class="hint">Каждый статус сохраняется отдельно. Код уникален внутри источника.</p>
       </div>
 
-      <div class="row">
-        <button class="btn btn--sm" type="button" (click)="addStatus()"><app-icon name="plus" />Добавить статус</button>
+      <div class="row toolbar">
+        <button class="btn" type="button" (click)="addStatus()"><app-icon name="plus" />Добавить статус</button>
         <select class="dict" aria-label="Добавить статус из справочника" (change)="pickDefinition($event)">
           <option value="">Из справочника</option>
           @for (definition of definitions(); track definition.id) {
@@ -48,34 +48,51 @@ let seq = 0;
           }
         </select>
         @if (definitionsError()) {
-          <button class="btn btn--ghost btn--sm" type="button" (click)="loadDefinitions()">Справочник недоступен — повторить</button>
+          <button class="btn btn--ghost" type="button" (click)="loadDefinitions()">Справочник недоступен — повторить</button>
         }
       </div>
 
       @for (row of rows(); track row.key) {
         <div class="status-row">
-          <div class="row">
-            <input class="grow" [value]="row.name" (input)="rename(row, $any($event.target).value)"
-              placeholder="Название, например «Вода есть»" aria-label="Название статуса" />
-            <input class="code" [value]="row.code" (input)="patch(row, { code: $any($event.target).value, codeTouched: true })"
-              placeholder="ok" aria-label="Код статуса" />
-          </div>
-          <input [value]="row.description" (input)="patch(row, { description: $any($event.target).value })"
-            placeholder="Что означает (подсказка для LLM)" aria-label="Описание статуса" />
-          <div class="row">
-            <select [value]="row.color" (change)="patch(row, { color: $any($event.target).value })" aria-label="Цвет статуса">
-              @for (option of colors; track option.value) { <option [value]="option.value">{{ option.label }}</option> }
-            </select>
+          <div class="row status-row__head">
             <app-status-badge [label]="row.name || 'Статус'" [tone]="row.color" [icon]="row.icon" />
-            <select [value]="row.icon" (change)="patch(row, { icon: $any($event.target).value })" aria-label="Иконка статуса">
-              @for (option of icons; track option.value) { <option [value]="option.value">{{ option.label }}</option> }
-            </select>
             <span class="grow"></span>
-            <button class="btn btn--sm" type="button" [disabled]="row.saving" (click)="save(row)">
-              {{ row.saving ? 'Сохранение…' : 'Сохранить' }}
+            <button class="btn" type="button" [disabled]="row.saving" (click)="save(row)">
+              <app-icon name="check" />{{ row.saving ? 'Сохранение…' : 'Сохранить' }}
             </button>
             <button class="btn btn--ghost btn--icon btn--danger" type="button" [attr.aria-label]="'Удалить статус ' + row.name"
               (click)="remove(row)"><app-icon name="trash" /></button>
+          </div>
+
+          <!-- Поля — ровной сеткой в две колонки: название и код, описание на всю ширину, цвет и иконка. -->
+          <div class="status-grid">
+            <div class="field">
+              <label [for]="'st-name-' + row.key">Название</label>
+              <input [id]="'st-name-' + row.key" [value]="row.name" (input)="rename(row, $any($event.target).value)"
+                placeholder="Например, «Вода есть»" />
+            </div>
+            <div class="field">
+              <label [for]="'st-code-' + row.key">Код</label>
+              <input [id]="'st-code-' + row.key" [value]="row.code"
+                (input)="patch(row, { code: $any($event.target).value, codeTouched: true })" placeholder="ok" />
+            </div>
+            <div class="field status-grid__wide">
+              <label [for]="'st-desc-' + row.key">Что означает</label>
+              <input [id]="'st-desc-' + row.key" [value]="row.description"
+                (input)="patch(row, { description: $any($event.target).value })" placeholder="Подсказка для LLM" />
+            </div>
+            <div class="field">
+              <label [for]="'st-color-' + row.key">Цвет</label>
+              <select [id]="'st-color-' + row.key" [value]="row.color" (change)="patch(row, { color: $any($event.target).value })">
+                @for (option of colors; track option.value) { <option [value]="option.value">{{ option.label }}</option> }
+              </select>
+            </div>
+            <div class="field">
+              <label [for]="'st-icon-' + row.key">Иконка</label>
+              <select [id]="'st-icon-' + row.key" [value]="row.icon" (change)="patch(row, { icon: $any($event.target).value })">
+                @for (option of icons; track option.value) { <option [value]="option.value">{{ option.label }}</option> }
+              </select>
+            </div>
           </div>
 
           @if (row.touched && !row.name.trim()) { <span class="err">Укажите название</span> }
@@ -91,10 +108,15 @@ let seq = 0;
       }
     </section>`,
   styles: `
-    .dict { height: var(--control-h); padding: 0 10px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); }
-    .status-row { display: grid; gap: 6px; padding: 10px; border: 1px solid var(--line-soft); border-radius: var(--r-md); }
-    .status-row input, .status-row select { height: var(--control-h); padding: 0 10px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); }
-    .code { width: 130px; }
+    .dict { height: var(--control-h); padding: 0 34px 0 12px; border: 1px solid var(--line); border-radius: var(--r-md); background-color: var(--surface); }
+    .status-row { display: grid; gap: 12px; padding: 12px; border: 1px solid var(--line-soft); border-radius: var(--r-md); }
+    .status-row__head { flex-wrap: nowrap; }
+    .status-row__head app-status-badge { min-width: 0; }
+    .status-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 12px; }
+    .status-grid__wide { grid-column: 1 / -1; }
+    @media (max-width: 520px) {
+      .status-grid { grid-template-columns: minmax(0, 1fr); }
+    }
     .hint { font-size: 12px; color: var(--ink-3); }
     .err { color: var(--st-none); font-size: 12px; }
   `,

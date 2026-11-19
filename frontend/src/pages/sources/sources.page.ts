@@ -1,4 +1,4 @@
-import { Component, DestroyRef, computed, effect, inject, signal } from '@angular/core';
+import { Component, DestroyRef, ElementRef, computed, effect, inject, signal, viewChild } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { CategoriesApi } from '@entities/category';
 import { SourcesApi, sourceStateIcon, sourceStateTone, type ListSourcesQuery } from '@entities/source';
@@ -8,6 +8,7 @@ import { SourceStatuses } from '@features/source-edit/source-statuses';
 import { SourceHealthPanel } from '@features/source-health/source-health';
 import { ApiError, errorText, toApiError } from '@shared/api/api-error';
 import type { Source, SourceHealth, SourceStatus, SourceType } from '@shared/api/types';
+import { closeDialog, openDialog } from '@shared/lib/dialog';
 import { agoIso, durationSec } from '@shared/lib/format';
 import { SOURCE_STATE_LABEL, SOURCE_TYPE_LABEL, TELEGRAM_MODE_SHORT } from '@shared/lib/labels';
 import { ConfirmService } from '@shared/ui/confirm';
@@ -16,6 +17,7 @@ import { LoadMore } from '@shared/ui/load-more';
 import { PageHead } from '@shared/ui/page-head';
 import { SearchInput } from '@shared/ui/search-input';
 import { StatusBadge } from '@shared/ui/status-badge';
+import { Tabs, type TabItem } from '@shared/ui/tabs';
 import { ToastService } from '@shared/ui/toast';
 
 type EnabledFilter = 'all' | 'yes' | 'no';
@@ -34,6 +36,7 @@ const PAGE_SIZE = 50;
     PageHead,
     SearchInput,
     StatusBadge,
+    Tabs,
   ],
   template: `
     <div class="page">
@@ -131,33 +134,91 @@ const PAGE_SIZE = 50;
         </div>
 
         <div class="stack">
-          @if (creating()) {
-            <app-source-form [source]="null" (saved)="onSaved($event)" (cancelled)="select(null)" />
-          } @else if (selected(); as source) {
-            <div class="card selected-head">
-              <div class="row">
-                <strong class="grow">{{ source.name }}</strong>
-                @if (isSite(source)) { <span class="chip">Системный · {{ categoryName(source) }}</span> }
-                <button class="btn btn--sm" type="button" [disabled]="busyId() === source.id" (click)="toggle(source)">
-                  <app-icon [name]="source.isEnabled ? 'cross' : 'check'" />
-                  {{ source.isEnabled ? 'Выключить' : 'Включить' }}
-                </button>
+          @if (selected(); as source) {
+            <!-- Сводка выбранного источника; всё редактирование — в окне настроек. -->
+            <section class="card stack summary" aria-labelledby="source-summary-title">
+              <header class="row head">
+                <h2 id="source-summary-title" class="grow">{{ source.name }}</h2>
+                @if (!source.isEnabled) { <span class="chip">Выключен</span> }
+              </header>
+              <dl class="kv facts">
+                <dt>Тип</dt>
+                <dd>
+                  @if (isSite(source)) {
+                    Системный · {{ categoryName(source) }}
+                  } @else {
+                    {{ typeLabels[source.sourceType] }}@if (source.mode) { · {{ modeLabels[source.mode] }} }
+                  }
+                </dd>
                 @if (!isSite(source)) {
-                  <button class="btn btn--sm btn--ghost btn--danger" type="button" (click)="remove(source)">
-                    <app-icon name="trash" />Удалить
-                  </button>
+                  <dt>Чат</dt>
+                  <dd>{{ source.chatId }}</dd>
                 }
+                <dt>Таймаут</dt>
+                <dd>{{ timeout(source.timeoutSeconds) }}</dd>
+                <dt>Статусы</dt>
+                <dd class="badges">
+                  @for (status of source.statuses; track status.id) {
+                    <app-status-badge [label]="status.name" [tone]="status.color" [icon]="iconName(status.icon)" />
+                  } @empty {
+                    <span class="muted">Нет — добавьте в настройках</span>
+                  }
+                </dd>
+              </dl>
+              <div class="card-actions">
+                <button class="btn btn--primary" type="button" (click)="openSettings()">
+                  <app-icon name="settings" />Настройки
+                </button>
+                <div class="card-actions__row">
+                  <button class="btn" type="button" [disabled]="busyId() === source.id" (click)="toggle(source)">
+                    <app-icon [name]="source.isEnabled ? 'cross' : 'check'" />
+                    {{ source.isEnabled ? 'Выключить' : 'Включить' }}
+                  </button>
+                  @if (!isSite(source)) {
+                    <button class="btn btn--ghost btn--danger" type="button" (click)="remove(source)">
+                      <app-icon name="trash" />Удалить
+                    </button>
+                  }
+                </div>
               </div>
-            </div>
+            </section>
 
             <app-source-health [sourceId]="source.id" (refreshed)="onHealth(source.id, $event)" />
-            <app-source-form [source]="source" (saved)="onSaved($event)" (cancelled)="select(null)" />
-            <app-source-statuses [source]="source" (statusesChange)="onStatuses(source.id, $event)" />
           } @else {
             <div class="card empty">Выберите источник в списке или создайте новый.</div>
           }
         </div>
       </div>
+
+      <!-- Настроек у источника много: форма открывается отдельным окном, а не в узкой колонке. -->
+      <dialog #settings class="modal" aria-labelledby="source-settings-title" (cancel)="onSettingsCancel($event)"
+        (close)="closeSettings()">
+        @if (settingsOpen() && (creating() || selected())) {
+          <div class="modal__box stack">
+            <header class="row head">
+              <div class="grow">
+                <h2 id="source-settings-title">{{ creating() ? 'Новый источник' : 'Настройки источника' }}</h2>
+                @if (selected(); as source) { <small>{{ source.name }}</small> }
+              </div>
+              <button class="btn btn--ghost btn--icon" type="button" aria-label="Закрыть окно" (click)="closeSettings()">
+                <app-icon name="cross" />
+              </button>
+            </header>
+            @if (selected(); as source) {
+              <app-tabs [tabs]="settingsTabs" [(active)]="settingsTab" />
+              <!-- Вкладки скрываются, а не пересоздаются: несохранённые правки формы не теряются. -->
+              <div [hidden]="settingsTab() !== 'main'">
+                <app-source-form [source]="source" (saved)="onSaved($event)" (cancelled)="closeSettings()" />
+              </div>
+              <div [hidden]="settingsTab() !== 'statuses'">
+                <app-source-statuses [source]="source" (statusesChange)="onStatuses(source.id, $event)" />
+              </div>
+            } @else {
+              <app-source-form [source]="null" (saved)="onSaved($event)" (cancelled)="closeSettings()" />
+            }
+          </div>
+        }
+      </dialog>
 
       @if (statusPop(); as pop) {
         <div class="statuses__pop" role="tooltip" [style.left.px]="pop.x" [style.top.px]="pop.y"
@@ -170,7 +231,25 @@ const PAGE_SIZE = 50;
     </div>`,
   styles: `
     .filters { display: grid; grid-template-columns: minmax(180px, 1fr) max-content max-content; gap: 8px; align-items: end; padding: 12px; }
-    .selected-head { padding: 10px 12px; }
+    .summary { min-width: 0; overflow-wrap: anywhere; }
+    .summary h2 { font-size: 20px; }
+    .facts { grid-template-columns: 84px minmax(0, 1fr); align-items: start; }
+    .facts dd { min-height: 22px; }
+    .badges { display: flex; flex-wrap: wrap; gap: 6px; }
+    // Действия — как в карточке объекта на карте: крупные кнопки, главная — «Настройки» на всю ширину.
+    // Под ней остальные кнопки делят строку поровну.
+    .card-actions { display: grid; gap: 8px; padding-top: 12px; border-top: 1px solid var(--line-soft); }
+    .card-actions__row { display: flex; gap: 8px; }
+    .card-actions .btn { justify-content: center; white-space: nowrap; }
+    .card-actions__row .btn { flex: 1 1 0; min-width: 0; }
+    .modal { width: min(760px, calc(100vw - 32px)); max-width: none; max-height: 90vh; padding: 0; border: 0;
+      background: transparent; overflow: visible; }
+    .modal::backdrop { background: rgb(15 42 51 / 0.45); }
+    .modal__box { max-height: 90vh; overflow: auto; padding: var(--pad); background: var(--surface);
+      border: 1px solid var(--line); border-radius: var(--r-lg); box-shadow: var(--shadow-float); min-width: 0; }
+    .modal__box > *, .modal__box .row > * { min-width: 0; }
+    .head { align-items: flex-start; flex-wrap: nowrap; }
+    .head small { overflow-wrap: anywhere; }
     // Список стоит в узкой колонке рядом с карточкой источника: длинные заголовки переносим, иначе появляется горизонтальный скролл.
     .table th { white-space: normal; }
     // Статусы в списке — компактные точки; полные плашки показываются при наведении.
@@ -186,6 +265,10 @@ const PAGE_SIZE = 50;
     }
     @media (max-width: 700px) {
       .filters { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 640px) {
+      .modal { width: 100vw; height: 100dvh; max-height: none; margin: 0; }
+      .modal__box { height: 100%; max-height: none; border-radius: 0; border: 0; }
     }
   `,
 })
@@ -225,6 +308,14 @@ export class SourcesPage {
 
   protected readonly selectedId = signal<string | null>(this.route.snapshot.queryParamMap.get('id'));
   protected readonly creating = computed(() => this.selectedId() === 'new');
+  /** Окно настроек; ссылка ?id=new сразу открывает создание. */
+  protected readonly settingsOpen = signal(this.selectedId() === 'new');
+  protected readonly settingsTab = signal('main');
+  protected readonly settingsTabs: TabItem[] = [
+    { id: 'main', label: 'Основное', icon: 'settings' },
+    { id: 'statuses', label: 'Статусы', icon: 'drop' },
+  ];
+  private readonly settings = viewChild<ElementRef<HTMLDialogElement>>('settings');
   protected readonly selected = computed(() => {
     const id = this.selectedId();
     if (!id || id === 'new') return null;
@@ -254,10 +345,34 @@ export class SourcesPage {
         replaceUrl: true,
       });
     });
+
+    effect(() => {
+      const dialog = this.settings()?.nativeElement;
+      if (!dialog) return;
+      if (this.settingsOpen()) openDialog(dialog);
+      else closeDialog(dialog);
+    });
   }
 
   protected create(): void {
     this.selectedId.set('new');
+    this.settingsOpen.set(true);
+  }
+
+  protected openSettings(): void {
+    this.settingsTab.set('main');
+    this.settingsOpen.set(true);
+  }
+
+  /** Закрытие без сохранения: незавершённое создание сбрасывает выбор. */
+  protected closeSettings(): void {
+    this.settingsOpen.set(false);
+    if (this.creating()) this.selectedId.set(null);
+  }
+
+  protected onSettingsCancel(event: Event): void {
+    event.preventDefault();
+    this.closeSettings();
   }
 
   protected isSite(source: Source): boolean {
@@ -360,6 +475,7 @@ export class SourcesPage {
   protected onSaved(source: Source): void {
     this.replace(source);
     this.selectedId.set(source.id);
+    this.settingsOpen.set(false);
   }
 
   protected onStatuses(id: string, statuses: SourceStatus[]): void {

@@ -1,4 +1,4 @@
-import { Component, computed, effect, inject, input, output, signal } from '@angular/core';
+import { Component, ElementRef, computed, effect, inject, input, output, signal, viewChild } from '@angular/core';
 import {
   AbstractControl,
   FormArray,
@@ -12,6 +12,7 @@ import { StatusDefinitionsApi } from '@entities/status-definition';
 import { ApiError, toApiError } from '@shared/api/api-error';
 import type { Source, SourceType, StatusColor, StatusDefinition, TelegramMode } from '@shared/api/types';
 import { slugCode } from '@shared/lib/code';
+import { closeDialog, openDialog } from '@shared/lib/dialog';
 import { TELEGRAM_MODE_HINT } from '@shared/lib/labels';
 import { FieldError } from '@shared/ui/field-error';
 import { FormError } from '@shared/ui/form-error';
@@ -73,14 +74,15 @@ const API_FIELDS = [
   'linkByText',
 ];
 
-/** Форма источника: создание вместе со статусами, редактирование — без них. */
+/**
+ * Форма источника: создание вместе со статусами, редактирование — без них.
+ * Живёт внутри модального окна страницы, поэтому без своей рамки и заголовка.
+ */
 @Component({
   selector: 'app-source-form',
   imports: [ReactiveFormsModule, FieldError, FormError, Hint, Icon, StatusBadge],
   template: `
-    <form class="card stack" [formGroup]="form" (ngSubmit)="submit()" aria-label="Форма источника">
-      <h2>{{ creating() ? 'Новый источник' : 'Источник' }}</h2>
-
+    <form class="stack" [formGroup]="form" (ngSubmit)="submit()" aria-label="Форма источника">
       <div class="field">
         <label for="sf-name">Название</label>
         <input id="sf-name" formControlName="name" autocomplete="off" />
@@ -88,8 +90,8 @@ const API_FIELDS = [
         @if (localError(f.name); as message) { <span class="err">{{ message }}</span> }
       </div>
 
-      <div class="row">
-        <div class="field grow">
+      <div class="row pair">
+        <div class="field">
           <label for="sf-type">Тип</label>
           @if (isSite()) {
             <span class="sys">Системный источник «Сайт» — создаётся вместе с категорией.</span>
@@ -100,7 +102,7 @@ const API_FIELDS = [
           }
           <app-field-error [error]="error()" field="sourceType" />
         </div>
-        <div class="field grow timeout">
+        <div class="field timeout">
           <label for="sf-timeout">Таймаут актуальности</label>
           <div class="row">
             <input id="sf-timeout" class="grow" type="number" min="1" step="1" formControlName="timeoutAmount" />
@@ -203,10 +205,14 @@ const API_FIELDS = [
 
       @if (!isSite()) {
         <div class="field">
-          <label for="sf-prompt">Промпт-фильтр</label>
-          <textarea id="sf-prompt" formControlName="userPrompt"
-            placeholder="Ищи в чате все упоминания про подачу и прекращение подачи воды"></textarea>
-          <span class="hint">К промпту автоматически добавляется системный: контекст задачи, список статусов и формат ответа. Его нельзя изменить.</span>
+          <div class="row prompt-head">
+            <label class="grow" for="sf-prompt">Промпт-фильтр</label>
+            <button class="btn btn--ghost btn--sm" type="button" (click)="openPrompt()">
+              <app-icon name="expand" />Развернуть
+            </button>
+          </div>
+          <textarea id="sf-prompt" class="prompt" formControlName="userPrompt" [placeholder]="promptPlaceholder"></textarea>
+          <span class="hint">{{ promptHint }}</span>
           <app-field-error [error]="error()" field="userPrompt" />
           @if (localError(f.userPrompt); as message) { <span class="err">{{ message }}</span> }
         </div>
@@ -247,12 +253,33 @@ const API_FIELDS = [
 
       <app-form-error [error]="error()" [fields]="apiFields" />
 
-      <div class="row">
+      <div class="row actions">
         <button class="btn btn--primary" type="submit" [disabled]="saving()">
           {{ saving() ? 'Сохранение…' : 'Сохранить' }}
         </button>
         <button class="btn btn--ghost" type="button" (click)="cancelled.emit()">Закрыть</button>
       </div>
+
+      <!-- Промпт бывает длинным: отдельное окно почти во весь экран, правки идут в то же поле формы. -->
+      <dialog #promptDialog class="prompt-modal" aria-labelledby="sf-prompt-title"
+        (cancel)="onPromptCancel($event)" (close)="closePrompt()">
+        @if (promptOpen()) {
+          <div class="prompt-box">
+            <header class="row">
+              <h2 id="sf-prompt-title" class="grow">Промпт-фильтр</h2>
+              <button class="btn btn--ghost btn--icon" type="button" aria-label="Свернуть промпт" (click)="closePrompt()">
+                <app-icon name="cross" />
+              </button>
+            </header>
+            <textarea #promptFull id="sf-prompt-full" class="prompt-full" formControlName="userPrompt"
+              aria-labelledby="sf-prompt-title" [placeholder]="promptPlaceholder"></textarea>
+            <span class="hint">{{ promptHint }}</span>
+            <div class="row">
+              <button class="btn btn--primary" type="button" (click)="closePrompt()">Готово</button>
+            </div>
+          </div>
+        }
+      </dialog>
     </form>`,
   styles: `
     .st-block { display: grid; gap: 12px; margin: 0; padding: 12px; border: 1px solid var(--line); border-radius: var(--r-md); }
@@ -260,6 +287,9 @@ const API_FIELDS = [
     .stat { display: grid; gap: 6px; }
     .stat input, .stat select, .dict { height: var(--control-h); padding: 0 10px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); }
     .code { width: 130px; }
+    // Тип и таймаут — две равные колонки, выровненные по верху: подсказка под таймаутом не сдвигает соседа.
+    .pair { align-items: flex-start; }
+    .pair > .field { flex: 1 1 220px; min-width: 0; }
     .timeout .row { flex-wrap: nowrap; }
     .more summary { cursor: pointer; font-weight: 500; color: var(--ink-2); }
     .more .stack { margin-top: 10px; }
@@ -267,6 +297,24 @@ const API_FIELDS = [
     .mode-switch { flex-wrap: wrap; }
     .sys { display: inline-flex; align-items: center; min-height: var(--control-h); color: var(--ink-2); font-size: 14px; }
     .err { color: var(--st-none); font-size: 12px; }
+    .prompt-head { flex-wrap: nowrap; }
+    .prompt { min-height: 160px; }
+    // Кнопки сохранения прилипают к низу прокручиваемого окна: форма длинная, на узком экране до них далеко.
+    .actions { position: sticky; bottom: 0; z-index: 1; margin: 0 calc(-1 * var(--pad)) calc(-1 * var(--pad));
+      padding: 12px var(--pad) var(--pad); background: var(--surface); border-top: 1px solid var(--line-soft); }
+    .prompt-modal { width: min(1100px, calc(100vw - 32px)); max-width: none; height: 90vh; max-height: none; padding: 0;
+      border: 0; background: transparent; overflow: visible; }
+    .prompt-modal::backdrop { background: rgb(15 42 51 / 0.45); }
+    .prompt-box { display: flex; flex-direction: column; gap: 10px; height: 100%; padding: var(--pad); background: var(--surface);
+      border: 1px solid var(--line); border-radius: var(--r-lg); box-shadow: var(--shadow-float); }
+    .prompt-full { flex: 1; min-height: 0; padding: 12px 14px; resize: none; line-height: 1.5;
+      background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md); }
+    .prompt-full:focus { outline: none; border-color: var(--brand); box-shadow: var(--focus-ring); }
+    .prompt-box .hint { font-size: 12px; color: var(--ink-3); }
+    @media (max-width: 640px) {
+      .prompt-modal { width: 100vw; height: 100dvh; margin: 0; }
+      .prompt-box { border-radius: 0; border: 0; }
+    }
   `,
 })
 export class SourceForm {
@@ -284,6 +332,9 @@ export class SourceForm {
   protected readonly colors = STATUS_COLOR_OPTIONS;
   protected readonly icons = STATUS_ICON_OPTIONS;
   protected readonly apiFields = API_FIELDS;
+  protected readonly promptPlaceholder = 'Ищи в чате все упоминания про подачу и прекращение подачи воды';
+  protected readonly promptHint =
+    'К промпту автоматически добавляется системный: контекст задачи, список статусов и формат ответа. Его нельзя изменить.';
 
   protected readonly form = new FormGroup<SourceControls>({
     name: new FormControl('', { nonNullable: true, validators: [Validators.required] }),
@@ -307,6 +358,10 @@ export class SourceForm {
   protected readonly saving = signal(false);
   protected readonly definitions = signal<StatusDefinition[]>([]);
   protected readonly definitionsError = signal(false);
+  protected readonly promptOpen = signal(false);
+
+  private readonly promptDialog = viewChild<ElementRef<HTMLDialogElement>>('promptDialog');
+  private readonly promptFull = viewChild<ElementRef<HTMLTextAreaElement>>('promptFull');
 
   protected readonly chatHint = computed(() =>
     this.f.sourceType.value === 'telegram_chat'
@@ -328,6 +383,35 @@ export class SourceForm {
       this.fill(source);
       if (!source) this.loadDefinitions();
     });
+
+    effect(() => {
+      const dialog = this.promptDialog()?.nativeElement;
+      if (!dialog) return;
+      if (this.promptOpen()) {
+        openDialog(dialog);
+        setTimeout(() => this.promptFull()?.nativeElement.focus());
+      } else {
+        closeDialog(dialog);
+      }
+    });
+  }
+
+  protected openPrompt(): void {
+    this.promptOpen.set(true);
+  }
+
+  protected closePrompt(): void {
+    this.promptOpen.set(false);
+    // Ввод в одном textarea не обновляет второй, привязанный к тому же контролу: переписываем значение во все поля.
+    const prompt = this.form.controls.userPrompt;
+    prompt.setValue(prompt.value, { emitEvent: false });
+  }
+
+  /** Esc сворачивает только окно промпта, окно настроек под ним остаётся. */
+  protected onPromptCancel(event: Event): void {
+    event.preventDefault();
+    event.stopPropagation();
+    this.closePrompt();
   }
 
   protected get statusRows(): FormGroup<StatusControls>[] {
