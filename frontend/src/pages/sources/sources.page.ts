@@ -171,6 +171,8 @@ const PAGE_SIZE = 50;
   styles: `
     .filters { display: grid; grid-template-columns: minmax(180px, 1fr) max-content max-content; gap: 8px; align-items: end; padding: 12px; }
     .selected-head { padding: 10px 12px; }
+    // Список стоит в узкой колонке рядом с карточкой источника: длинные заголовки переносим, иначе появляется горизонтальный скролл.
+    .table th { white-space: normal; }
     // Статусы в списке — компактные точки; полные плашки показываются при наведении.
     .statuses { display: inline-flex; align-items: center; gap: 5px; cursor: default; }
     .statuses__dot { width: 10px; height: 10px; border-radius: 50%; background: var(--tone, var(--st-stale)); flex: none; }
