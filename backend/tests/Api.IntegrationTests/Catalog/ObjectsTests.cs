@@ -50,7 +50,7 @@ public sealed class ObjectsTests(PostgresFixture fixture) : IAsyncLifetime
             ObjectsPath,
             token,
             $$"""
-              {"name":"{{pointName}}","coverageKind":"point",
+              {"name":"{{pointName}}","objectTypeId":"00000000-0000-0000-0000-00000000aa01","coverageKind":"point",
                "geometry":{"type":"Point","coordinates":[37.80,48.01]},
                "address":"пр. Ленинский, 12" }
               """,
@@ -88,7 +88,7 @@ public sealed class ObjectsTests(PostgresFixture fixture) : IAsyncLifetime
             ObjectsPath,
             token,
             $$"""
-              {"name":"{{polygonName}}","coverageKind":"polygon",
+              {"name":"{{polygonName}}","objectTypeId":"00000000-0000-0000-0000-00000000aa01","coverageKind":"polygon",
                "geometry":{"type":"Polygon","coordinates":[[[37.70,48.00],[37.75,48.00],[37.75,48.05],[37.70,48.05],[37.70,48.00]]]} }
               """,
             ct))
@@ -139,7 +139,7 @@ public sealed class ObjectsTests(PostgresFixture fixture) : IAsyncLifetime
             ObjectsPath,
             token,
             """
-            {"name":"Точка с полигоном","coverageKind":"point",
+            {"name":"Точка с полигоном","objectTypeId":"00000000-0000-0000-0000-00000000aa01","coverageKind":"point",
              "geometry":{"type":"Polygon","coordinates":[[[37.70,48.00],[37.75,48.00],[37.75,48.05],[37.70,48.00]]]} }
             """,
             ct);
@@ -163,7 +163,7 @@ public sealed class ObjectsTests(PostgresFixture fixture) : IAsyncLifetime
             ObjectsPath,
             token,
             """
-            {"name":"Самопересечение","coverageKind":"polygon",
+            {"name":"Самопересечение","objectTypeId":"00000000-0000-0000-0000-00000000aa01","coverageKind":"polygon",
              "geometry":{"type":"Polygon","coordinates":[[[37.70,48.00],[37.75,48.05],[37.75,48.00],[37.70,48.05],[37.70,48.00]]]} }
             """,
             ct);
@@ -186,7 +186,7 @@ public sealed class ObjectsTests(PostgresFixture fixture) : IAsyncLifetime
             ObjectsPath,
             token,
             """
-            {"name":"Вне диапазона","coverageKind":"point",
+            {"name":"Вне диапазона","objectTypeId":"00000000-0000-0000-0000-00000000aa01","coverageKind":"point",
              "geometry":{"type":"Point","coordinates":[200.0,48.0]} }
             """,
             ct);
@@ -223,6 +223,51 @@ public sealed class ObjectsTests(PostgresFixture fixture) : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Object_type_is_required_on_create_and_update_422()
+    {
+        // Без типа у фиксации нет категории, а значит и системного источника «Сайт».
+        var ct = CancellationToken.None;
+        var token = await _api.ModeratorTokenAsync(ct);
+
+        foreach (var body in new[]
+                 {
+                     """{"name":"Без типа","coverageKind":"point","geometry":{"type":"Point","coordinates":[37.80,48.01]}}""",
+                     """{"name":"Тип null","objectTypeId":null,"coverageKind":"point","geometry":{"type":"Point","coordinates":[37.80,48.01]}}""",
+                 })
+        {
+            using var response = await _api.SendAsync(HttpMethod.Post, ObjectsPath, token, body, ct);
+            response.StatusCode.ShouldBe(HttpStatusCode.UnprocessableEntity);
+
+            var json = await CatalogApi.ReadJsonAsync(response, ct);
+            json.GetProperty("errors").EnumerateArray()
+                .ShouldContain(error => error.GetProperty("field").GetString() == "objectTypeId");
+        }
+
+        var (typeId, _) = await CreateObjectTypeAsync(token, "point", ct);
+        Guid objectId;
+        using (var created = await _api.SendAsync(
+            HttpMethod.Post,
+            ObjectsPath,
+            token,
+            $$$"""{"name":"С типом","objectTypeId":"{{{typeId}}}","coverageKind":"point","geometry":{"type":"Point","coordinates":[37.80,48.01]}}""",
+            ct))
+        {
+            created.StatusCode.ShouldBe(HttpStatusCode.Created);
+            objectId = (await CatalogApi.ReadJsonAsync(created, ct)).GetProperty("id").GetGuid();
+        }
+
+        using var update = await _api.SendAsync(
+            HttpMethod.Put,
+            $"{ObjectsPath}/{objectId}",
+            token,
+            """{"name":"Тип снят","objectTypeId":null,"coverageKind":"point","geometry":{"type":"Point","coordinates":[37.80,48.01]}}""",
+            ct);
+        update.StatusCode.ShouldBe(HttpStatusCode.UnprocessableEntity);
+        (await CatalogApi.ReadJsonAsync(update, ct)).GetProperty("errors").EnumerateArray()
+            .ShouldContain(error => error.GetProperty("field").GetString() == "objectTypeId");
+    }
+
+    [Fact]
     public async Task Unknown_object_type_and_group_422()
     {
         var ct = CancellationToken.None;
@@ -250,7 +295,7 @@ public sealed class ObjectsTests(PostgresFixture fixture) : IAsyncLifetime
             ObjectsPath,
             token,
             $$"""
-              {"name":"Неизвестная группа","groupId":"{{Guid.NewGuid()}}","coverageKind":"point",
+              {"name":"Неизвестная группа","groupId":"{{Guid.NewGuid()}}","objectTypeId":"00000000-0000-0000-0000-00000000aa01","coverageKind":"point",
                "geometry":{"type":"Point","coordinates":[37.80,48.01]} }
               """,
             ct))
@@ -309,7 +354,7 @@ public sealed class ObjectsTests(PostgresFixture fixture) : IAsyncLifetime
             ObjectsPath,
             token,
             $$"""
-              {"name":"{{linkedName}}","groupId":"{{groupId}}","coverageKind":"point",
+              {"name":"{{linkedName}}","groupId":"{{groupId}}","objectTypeId":"00000000-0000-0000-0000-00000000aa01","coverageKind":"point",
                "geometry":{"type":"Point","coordinates":[37.80,48.01]},"sourceIds":["{{sourceId}}"]}
               """,
             ct))
@@ -577,7 +622,7 @@ public sealed class ObjectsTests(PostgresFixture fixture) : IAsyncLifetime
             ObjectsPath,
             token,
             $$"""
-              {"name":"С наблюдениями {{CatalogApi.NewSuffix()}}","coverageKind":"point",
+              {"name":"С наблюдениями {{CatalogApi.NewSuffix()}}","objectTypeId":"00000000-0000-0000-0000-00000000aa01","coverageKind":"point",
                "geometry":{"type":"Point","coordinates":[37.80,48.01]} }
               """,
             ct))
@@ -623,7 +668,7 @@ public sealed class ObjectsTests(PostgresFixture fixture) : IAsyncLifetime
         var userToken = await _api.UserTokenAsync(ct);
         var moderatorToken = await _api.ModeratorTokenAsync(ct);
         var payload = $$"""
-            {"name":"Права {{CatalogApi.NewSuffix()}}","coverageKind":"point",
+            {"name":"Права {{CatalogApi.NewSuffix()}}","objectTypeId":"00000000-0000-0000-0000-00000000aa01","coverageKind":"point",
              "geometry":{"type":"Point","coordinates":[37.80,48.01]} }
             """;
 
@@ -670,7 +715,7 @@ public sealed class ObjectsTests(PostgresFixture fixture) : IAsyncLifetime
             ObjectsPath,
             token,
             $$"""
-              {"name":"{{name}}","coverageKind":"point","address":"{{address}}",
+              {"name":"{{name}}","objectTypeId":"00000000-0000-0000-0000-00000000aa01","coverageKind":"point","address":"{{address}}",
                "geometry":{"type":"Point","coordinates":[37.80,48.01]},
                "sourceIds":["{{firstSourceId}}","{{secondSourceId}}"]}
               """,
@@ -722,7 +767,7 @@ public sealed class ObjectsTests(PostgresFixture fixture) : IAsyncLifetime
             $"{ObjectsPath}/{objectId}",
             token,
             """
-            {"name":"Новая запись","coverageKind":"point",
+            {"name":"Новая запись","objectTypeId":"00000000-0000-0000-0000-00000000aa01","coverageKind":"point",
              "geometry":{"type":"Point","coordinates":[37.80,48.01]} }
             """,
             ct))
@@ -747,7 +792,7 @@ public sealed class ObjectsTests(PostgresFixture fixture) : IAsyncLifetime
             ObjectsPath,
             token,
             $$"""
-              {"name":"{{name}}","coverageKind":"point",
+              {"name":"{{name}}","objectTypeId":"00000000-0000-0000-0000-00000000aa01","coverageKind":"point",
                "geometry":{"type":"Point","coordinates":[37.80,48.01]} }
               """,
             ct);

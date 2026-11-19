@@ -435,8 +435,13 @@ internal sealed class MapObjectService(
             }
         }
 
+        // Тип обязателен: через него фиксация получает категорию и системный источник «Сайт».
         if (input.ObjectTypeId is not { } objectTypeId)
         {
+            errors.Add(new ValidationError(
+                "objectTypeId",
+                "Укажите тип объекта: без него у фиксации нет категории и отметок с сайта"));
+
             return errors;
         }
 

@@ -275,7 +275,7 @@ internal sealed class ComplianceApi : IAsyncDisposable
             "/api/v1/catalog/objects",
             moderator,
             $$"""
-              {"name":"Фиксация {{suffix}}","groupId":"{{groupId}}","coverageKind":"point",
+              {"name":"Фиксация {{suffix}}","groupId":"{{groupId}}","objectTypeId":"00000000-0000-0000-0000-00000000aa01","coverageKind":"point",
                "address":"ул. Центральная, 1",
                "geometry":{"type":"Point","coordinates":[37.80,48.01]},
                "sourceIds":["{{sourceId}}"]}

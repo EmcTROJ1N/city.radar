@@ -473,7 +473,7 @@ public sealed class SourcesTests(PostgresFixture fixture) : IAsyncLifetime
             ObjectsPath,
             token,
             $$"""
-              {"name":"Фиксация {{CatalogApi.NewSuffix()}}","coverageKind":"point",
+              {"name":"Фиксация {{CatalogApi.NewSuffix()}}","objectTypeId":"00000000-0000-0000-0000-00000000aa01","coverageKind":"point",
                "geometry":{"type":"Point","coordinates":[37.80,48.01]} }
               """,
             ct))
@@ -858,7 +858,7 @@ public sealed class SourcesTests(PostgresFixture fixture) : IAsyncLifetime
             ObjectsPath,
             token,
             $$"""
-              {"name":"Фиксация {{suffix}}","coverageKind":"point",
+              {"name":"Фиксация {{suffix}}","objectTypeId":"00000000-0000-0000-0000-00000000aa01","coverageKind":"point",
                "geometry":{"type":"Point","coordinates":[37.80,48.01]},"sourceIds":[]}
               """,
             ct))

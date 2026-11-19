@@ -188,7 +188,7 @@ public sealed class ComplaintsTests(PostgresFixture fixture) : IAsyncLifetime
             ObjectsPath,
             token,
             $$"""
-              {"name":"Жалоба {{suffix}}","coverageKind":"point",
+              {"name":"Жалоба {{suffix}}","objectTypeId":"00000000-0000-0000-0000-00000000aa01","coverageKind":"point",
                "geometry":{"type":"Point","coordinates":[37.80,48.01]},
                "isActive":{{isActive.ToString().ToLowerInvariant()}}}
               """,

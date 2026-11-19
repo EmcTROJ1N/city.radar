@@ -46,6 +46,17 @@ describe('formFromObject', () => {
 });
 
 describe('inputFromForm', () => {
+  it('без типа объекта бросает ошибку — тип обязателен', () => {
+    const value = {
+      ...emptyMapObjectForm(),
+      name: 'Колонка',
+      coverageKind: 'point' as const,
+      geometry: { type: 'Point' as const, coordinates: [37.8, 48.01] as [number, number] },
+    };
+
+    expect(() => inputFromForm(value)).toThrow('Не задан тип объекта');
+  });
+
   it('собирает MapObjectInput и обрезает тексты', () => {
     const value = {
       ...emptyMapObjectForm(),
@@ -73,6 +84,7 @@ describe('inputFromForm', () => {
     const value = {
       ...emptyMapObjectForm(),
       name: 'Точка',
+      objectTypeId: 'type-1',
       geometry: { type: 'Point' as const, coordinates: [37.8, 48.01] as [number, number] },
       sourceIds: ['src-1'],
     };

@@ -35,7 +35,25 @@ public sealed class PostgresFixture : IAsyncLifetime
         var context = scope.ServiceProvider.GetRequiredService<MayakDbContext>();
 
         await context.Database.MigrateAsync();
+
+        // Тип фиксации обязателен. Тестам, которым тип не важен, — тип «любая геометрия»
+        // в отдельной категории без источника «Сайт»: поведение как у фиксации без типа.
+        await context.Database.ExecuteSqlRawAsync(
+            $"""
+             insert into categories (id, code, name)
+             values ('{TestCategoryId}', 'test_untyped', 'Тестовая категория')
+             on conflict (id) do nothing;
+             insert into object_types (id, category_id, code, name, geometry_kind)
+             values ('{AnyObjectTypeId}', '{TestCategoryId}', 'test_any', 'Тестовый тип', 'any')
+             on conflict (id) do nothing;
+             """);
     }
+
+    /// <summary>Категория тестового типа; источника «Сайт» у неё нет.</summary>
+    public const string TestCategoryId = "00000000-0000-0000-0000-00000000aa00";
+
+    /// <summary>Тип «любая геометрия» для фиксаций, создаваемых тестами через API.</summary>
+    public const string AnyObjectTypeId = "00000000-0000-0000-0000-00000000aa01";
 
     public async Task DisposeAsync()
     {

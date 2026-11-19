@@ -442,6 +442,7 @@ public sealed class FeaturesTests(PostgresFixture fixture) : IAsyncLifetime
         var body = new JsonObject
         {
             ["name"] = name,
+            ["objectTypeId"] = PostgresFixture.AnyObjectTypeId,
             ["coverageKind"] = "point",
             ["geometry"] = new JsonObject
             {
@@ -478,6 +479,7 @@ public sealed class FeaturesTests(PostgresFixture fixture) : IAsyncLifetime
         var body = new JsonObject
         {
             ["name"] = name,
+            ["objectTypeId"] = PostgresFixture.AnyObjectTypeId,
             ["coverageKind"] = "polygon",
             ["geometry"] = new JsonObject
             {

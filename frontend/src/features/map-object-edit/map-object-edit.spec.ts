@@ -108,6 +108,7 @@ describe('MapObjectEdit', () => {
   it('при создании передаёт sourceIds в теле запроса', async () => {
     const editor = createEditor(null, true);
     editor.form.controls.name.setValue('Новая колонка');
+    editor.form.controls.objectTypeId.setValue('type-1');
     editor.coverageKind.set('point');
     editor.geometry.set({ type: 'Point', coordinates: [37.8, 48.01] });
     editor.sourceIds.set(['src-new']);
@@ -118,6 +119,27 @@ describe('MapObjectEdit', () => {
     expect(api.create).toHaveBeenCalledWith(expect.objectContaining({ sourceIds: ['src-new'] }));
     expect(api.linkSource).not.toHaveBeenCalled();
     expect(api.unlinkSource).not.toHaveBeenCalled();
+  });
+
+  it('без типа объекта не сохраняет и показывает ошибку у поля', async () => {
+    const fixture = TestBed.createComponent(MapObjectEdit);
+    fixture.componentRef.setInput('object', null);
+    fixture.componentRef.setInput('isNew', true);
+    fixture.componentRef.setInput('objectTypes', [TYPE]);
+    fixture.componentRef.setInput('groups', []);
+    fixture.detectChanges();
+    const editor = fixture.componentInstance;
+    editor.form.controls.name.setValue('Без типа');
+    editor.coverageKind.set('point');
+    editor.geometry.set({ type: 'Point', coordinates: [37.8, 48.01] });
+
+    await editor.save();
+    fixture.detectChanges();
+
+    expect(api.create).not.toHaveBeenCalled();
+    const select = (fixture.nativeElement as HTMLElement).querySelector('#mo-type') as HTMLSelectElement;
+    expect(select.required).toBe(true);
+    expect((fixture.nativeElement as HTMLElement).textContent).toContain('Выберите тип объекта');
   });
 
   it('на 422 показывает ошибку формы без тоста', async () => {

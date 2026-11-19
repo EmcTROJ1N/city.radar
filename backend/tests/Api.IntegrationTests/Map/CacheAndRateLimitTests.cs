@@ -471,7 +471,7 @@ public sealed class CacheAndRateLimitTests(PostgresFixture fixture, RedisFixture
             ObjectsPath,
             token,
             $$"""
-              {"name":"Точка {{suffix}}","coverageKind":"point",
+              {"name":"Точка {{suffix}}","objectTypeId":"00000000-0000-0000-0000-00000000aa01","coverageKind":"point",
                "geometry":{"type":"Point","coordinates":[{{lon.ToString(CultureInfo.InvariantCulture)}},{{lat.ToString(CultureInfo.InvariantCulture)}}]},
                "isActive":true,"sourceIds":[]}
               """,
@@ -498,7 +498,7 @@ public sealed class CacheAndRateLimitTests(PostgresFixture fixture, RedisFixture
             ObjectsPath,
             token,
             $$"""
-              {"name":"Фиксация {{suffix}}","coverageKind":"point",
+              {"name":"Фиксация {{suffix}}","objectTypeId":"00000000-0000-0000-0000-00000000aa01","coverageKind":"point",
                "geometry":{"type":"Point","coordinates":[{{lon.ToString(CultureInfo.InvariantCulture)}},{{lat.ToString(CultureInfo.InvariantCulture)}}]},
                "isActive":true,"sourceIds":[{{links}}]}
               """,

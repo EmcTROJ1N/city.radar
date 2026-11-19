@@ -81,9 +81,11 @@ export function inputFromForm(
   options: { withSources?: boolean } = {},
 ): MapObjectInput {
   if (!value.geometry) throw new Error('Не задана геометрия фиксации');
+  // Тип обязателен: через него фиксация получает категорию и источник «Сайт».
+  if (!value.objectTypeId) throw new Error('Не задан тип объекта');
   const body: MapObjectInput = {
     name: value.name.trim(),
-    objectTypeId: value.objectTypeId ?? null,
+    objectTypeId: value.objectTypeId,
     groupId: value.groupId ?? null,
     coverageKind: value.coverageKind,
     geometry: toApiGeometry(value.geometry),

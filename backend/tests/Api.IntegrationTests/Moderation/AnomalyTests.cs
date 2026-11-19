@@ -417,11 +417,11 @@ public sealed class AnomalyTests(PostgresFixture fixture) : IAsyncLifetime
             objectTypeId = (await CatalogApi.ReadJsonAsync(typeResponse, ct)).GetProperty("id").GetGuid();
         }
 
+        // Тип обязателен: без своей категории — тестовый тип без источника «Сайт».
+        var typeId = objectTypeId?.ToString() ?? PostgresFixture.AnyObjectTypeId;
         var scope = withGroup
-            ? $"\"groupId\":\"{groupId}\","
-            : withCategory
-                ? $"\"objectTypeId\":\"{objectTypeId}\","
-                : string.Empty;
+            ? $"\"groupId\":\"{groupId}\",\"objectTypeId\":\"{typeId}\","
+            : $"\"objectTypeId\":\"{typeId}\",";
 
         Guid objectId;
         using (var response = await _api.SendAsync(

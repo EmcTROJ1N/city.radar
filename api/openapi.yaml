@@ -2445,11 +2445,14 @@ components:
 
     MapObjectInput:
       type: object
-      required: [name, coverageKind, geometry]
+      required: [name, objectTypeId, coverageKind, geometry]
       additionalProperties: false
       properties:
         name: { $ref: '#/components/schemas/NonEmptyText' }
-        objectTypeId: { type: [string, 'null'], format: uuid }
+        objectTypeId:
+          type: string
+          format: uuid
+          description: Тип объекта обязателен — через него фиксация получает категорию и источник «Сайт»
         groupId: { type: [string, 'null'], format: uuid }
         coverageKind: { $ref: '#/components/schemas/CoverageKind' }
         geometry: { $ref: '#/components/schemas/Geometry' }
@@ -2462,6 +2465,7 @@ components:
           items: { type: string, format: uuid }
       example:
         name: Колонка на Ленинском
+        objectTypeId: 00000000-0000-0000-0000-0000000000b2
         coverageKind: point
         geometry: { type: Point, coordinates: [37.80, 48.01] }
         address: пр. Ленинский, 12

@@ -1587,6 +1587,7 @@ export interface components {
         /**
          * @example {
          *       "name": "Колонка на Ленинском",
+         *       "objectTypeId": "00000000-0000-0000-0000-0000000000b2",
          *       "coverageKind": "point",
          *       "geometry": {
          *         "type": "Point",
@@ -1603,8 +1604,11 @@ export interface components {
          */
         MapObjectInput: {
             name: components["schemas"]["NonEmptyText"];
-            /** Format: uuid */
-            objectTypeId?: string | null;
+            /**
+             * Format: uuid
+             * @description Тип объекта обязателен — через него фиксация получает категорию и источник «Сайт»
+             */
+            objectTypeId: string;
             /** Format: uuid */
             groupId?: string | null;
             coverageKind: components["schemas"]["CoverageKind"];

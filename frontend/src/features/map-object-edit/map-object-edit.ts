@@ -100,10 +100,13 @@ function formatCoordinate(value: number): string {
 
       <div class="field">
         <label for="mo-type">Тип объекта</label>
-        <select id="mo-type" [value]="objectTypeId()" (change)="setTypeId($any($event.target).value)">
-          <option value="">Не задан</option>
+        <select id="mo-type" required [value]="objectTypeId()" (change)="setTypeId($any($event.target).value)">
+          <option value="" disabled>Выберите тип</option>
           @for (type of objectTypes(); track type.id) { <option [value]="type.id">{{ type.name }}</option> }
         </select>
+        @if (form.controls.objectTypeId.touched && form.controls.objectTypeId.hasError('required')) {
+          <span class="err">Выберите тип объекта: без него у фиксации нет категории и отметок с сайта.</span>
+        }
         <app-field-error [error]="apiError()" field="objectTypeId" />
       </div>
 
@@ -204,7 +207,7 @@ export class MapObjectEdit {
   readonly form = this.fb.group({
     name: ['', [Validators.required]],
     address: [''],
-    objectTypeId: [''],
+    objectTypeId: ['', [Validators.required]],
     groupId: [''],
     isActive: [true],
   });
