@@ -29,8 +29,6 @@ const COMMENT_MAX = 500;
       <p class="callout"><app-icon name="alert" /><span>У фиксации не задан тип, поэтому отметить статус нельзя.</span></p>
     } @else {
       <form class="stack" (submit)="submit($event)">
-        <h3>Отметить статус</h3>
-
         @if (showSourceSelect()) {
           <div class="field">
             <label for="rs-source">Источник</label>

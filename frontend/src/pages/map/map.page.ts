@@ -120,7 +120,7 @@ export function toTempPoints(response: ZonePointsResponse, now = Date.now()): Te
       @if (selectedId(); as id) {
         <div class="rail rail--right">
           <app-object-card [objectId]="id" [refreshKey]="refreshKey()" (close)="select(null)"
-            (reported)="onReported($event)" (retracted)="onRetracted($event)" (about)="disclaimerOpen.set(true)" />
+            (reported)="onReported($event)" (retracted)="onRetracted($event)" />
         </div>
       }
 
