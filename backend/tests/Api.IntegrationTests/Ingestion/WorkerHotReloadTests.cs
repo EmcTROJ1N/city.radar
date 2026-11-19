@@ -392,7 +392,7 @@ public sealed class WorkerHotReloadTests(Infrastructure.PostgresFixture fixture)
             var payload = document.RootElement;
 
             payload.EnumerateObject().Select(property => property.Name).ShouldBe(
-                ["sourceId", "mapObjectId", "statusCode", "rawMessageId", "observedAt", "confidence"],
+                ["sourceId", "mapObjectId", "statusCode", "rawMessageId", "observedAt", "confidence", "address"],
                 ignoreOrder: true);
 
             payload.GetProperty("sourceId").GetGuid().ShouldBe(source.Id);
@@ -446,6 +446,7 @@ public sealed class WorkerHotReloadTests(Infrastructure.PostgresFixture fixture)
                     "proposedMapObjectId",
                     "confidence",
                     "evidenceQuote",
+                    "address",
                 ],
                 ignoreOrder: true);
 

@@ -35,6 +35,24 @@ export interface MapItem {
   stale: boolean;
 }
 
+/**
+ * Временная точка по адресу из сообщений выбранной геозоны: не фиксация, не выбирается,
+ * живёт, пока зона выбрана.
+ */
+export interface TempPoint {
+  /** Ключ точки (адрес). */
+  id: string;
+  lngLat: LngLat;
+  /** Цвет статуса самого свежего сообщения. */
+  tone: Tone;
+  /** Адрес. */
+  title: string;
+  /** Статус и давность. */
+  subtitle: string;
+  /** Текст самого свежего сообщения. */
+  text: string | null;
+}
+
 export type DrawMode = 'none' | 'point' | 'polygon';
 
 /** Стили подложки по теме оформления; обе пустые строки — пустой стиль с фоном. */
@@ -51,6 +69,8 @@ export interface MapAdapter {
   destroy(): void;
   setItems(items: MapItem[]): void;
   setSelected(id: string | null): void;
+  /** Временные точки выбранной геозоны; `null` или пустой список — убрать. */
+  setTempPoints(points: readonly TempPoint[] | null): void;
   flyTo(geometry: MapGeometry): void;
   /** Подгоняет вид под все геометрии сразу: старт карты рядом с геозонами. */
   fitGeometries(geometries: readonly MapGeometry[]): void;

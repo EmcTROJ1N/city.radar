@@ -282,6 +282,7 @@ create table observations (
   confidence       real check (confidence between 0 and 1),
   raw_message_id   uuid references raw_messages(id),
   comment          text,                            -- комментарий пользователя
+  address          text,                            -- адрес из сообщения чата («улица дом»), для точек на карте
   geo_distance_m int check (geo_distance_m >= 0), -- расстояние от геолокации пользователя до фиксации; только информационный признак
   is_retracted     boolean not null default false,
   retracted_by     uuid references users(id),

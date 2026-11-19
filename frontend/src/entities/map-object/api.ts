@@ -10,6 +10,7 @@ import type {
   MapObjectInput,
   MapObjectPage,
   ObservationPage,
+  ZonePointsResponse,
 } from '@shared/api/types';
 
 export type ListFeaturesQuery = NonNullable<
@@ -37,6 +38,11 @@ export class MapApi {
       limit,
       cursor,
     });
+  }
+
+  /** Временные точки геозоны по адресам из сообщений; для точки — пустой список. */
+  getPoints(id: string): Promise<ZonePointsResponse> {
+    return this.api.get<ZonePointsResponse>(`/map/objects/${encodeURIComponent(id)}/points`);
   }
 
   complain(id: string, body: ComplaintRequest): Promise<ComplaintCreated> {

@@ -29,6 +29,7 @@ public sealed class Observation
         Confidence = draft.Confidence;
         RawPayloadRef = draft.RawPayloadRef;
         Comment = draft.Comment;
+        Address = draft.Address;
         IsRetracted = isRetracted;
     }
 
@@ -67,6 +68,9 @@ public sealed class Observation
 
     /// <summary>Необязательный текст ручной отметки.</summary>
     public string? Comment { get; }
+
+    /// <summary>Адрес из сообщения чата; <c>null</c>, если не назван.</summary>
+    public string? Address { get; }
 
     /// <summary>Отозвано ли наблюдение модератором.</summary>
     public bool IsRetracted { get; }

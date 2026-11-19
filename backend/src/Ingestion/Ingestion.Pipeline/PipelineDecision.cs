@@ -52,7 +52,8 @@ public sealed record ObservationProposed(
     string StatusCode,
     Guid RawMessageId,
     DateTimeOffset ObservedAt,
-    double Confidence);
+    double Confidence,
+    string? Address = null);
 
 /// <summary>
 /// Запрос на карточку модерации. Хранит предложение LLM, чтобы модератор мог
@@ -74,7 +75,8 @@ public sealed record ModerationCaseRequested(
     string? ProposedStatusCode,
     Guid? ProposedMapObjectId,
     double? Confidence,
-    string? EvidenceQuote);
+    string? EvidenceQuote,
+    string? Address = null);
 
 /// <summary>
 /// Вид карточки модерации, порождённой pipeline. Значения не являются

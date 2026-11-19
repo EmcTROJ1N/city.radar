@@ -57,6 +57,15 @@ public sealed record RateLimitOptions
     /// <summary>Окно лимита на фиксацию.</summary>
     public TimeSpan ObservationObjectWindow => TimeSpan.FromSeconds(Math.Max(1, ObservationObjectWindowSeconds));
 
+    /// <summary>Лимит запросов точек зоны (<c>/map/objects/{id}/points</c>) с одного IP за окно.</summary>
+    public int PointsIpLimit { get; init; } = 120;
+
+    /// <summary>Окно лимита точек зоны, секунды.</summary>
+    public int PointsIpWindowSeconds { get; init; } = 60;
+
+    /// <summary>Окно лимита точек зоны.</summary>
+    public TimeSpan PointsIpWindow => TimeSpan.FromSeconds(Math.Max(1, PointsIpWindowSeconds));
+
     /// <summary>Окно резервного лимита на пользователя (настройки недоступны).</summary>
     public TimeSpan ObservationUserFallbackWindow =>
         TimeSpan.FromSeconds(Math.Max(1, ObservationUserFallbackWindowSeconds));
@@ -92,6 +101,8 @@ public sealed record RateLimitOptions
             ObservationObjectWindowSeconds = section.GetValue(
                 "ObservationObjectWindowSeconds",
                 defaults.ObservationObjectWindowSeconds),
+            PointsIpLimit = section.GetValue("PointsIpLimit", defaults.PointsIpLimit),
+            PointsIpWindowSeconds = section.GetValue("PointsIpWindowSeconds", defaults.PointsIpWindowSeconds),
         };
     }
 }

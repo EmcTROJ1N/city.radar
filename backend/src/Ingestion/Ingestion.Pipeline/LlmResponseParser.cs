@@ -11,12 +11,14 @@ namespace Ingestion.Pipeline;
 /// <param name="ObjectId">Идентификатор фиксации из ответа; <c>null</c>, если не определён.</param>
 /// <param name="Confidence">Уверенность модели, 0..1; 0 для нерелевантного ответа.</param>
 /// <param name="EvidenceQuote">Дословная цитата из сообщения; пустая для нерелевантного ответа.</param>
+/// <param name="Address">Адрес из сообщения («улица дом»); <c>null</c>, если дом не назван.</param>
 public sealed record ParsedLlmResponse(
     bool Relevant,
     string? Status,
     string? ObjectId,
     double Confidence,
-    string EvidenceQuote);
+    string EvidenceQuote,
+    string? Address = null);
 
 /// <summary>
 /// Разбор сырого ответа LLM в <see cref="ParsedLlmResponse"/>. Принимает
@@ -30,6 +32,7 @@ public static class LlmResponseParser
     private const string ObjectIdField = "object_id";
     private const string ConfidenceField = "confidence";
     private const string EvidenceQuoteField = "evidence_quote";
+    private const string AddressField = "address";
 
     /// <summary>
     /// Разбирает ответ модели. Обязательные поля: <c>relevant</c>; при <c>relevant = true</c>
@@ -196,8 +199,17 @@ public static class LlmResponseParser
             objectId = string.IsNullOrEmpty(value) ? null : value;
         }
 
+        // Адрес второстепенен для статуса: неверный тип не отклоняет ответ, а просто отбрасывается.
+        string? address = null;
+        if (root.TryGetProperty(AddressField, out var addressElement) &&
+            addressElement.ValueKind == JsonValueKind.String)
+        {
+            var value = addressElement.GetString()?.Trim();
+            address = string.IsNullOrEmpty(value) ? null : value;
+        }
+
         var quote = quoteElement.GetString() ?? string.Empty;
-        return new ParsedLlmResponse(true, status, objectId, confidence, quote);
+        return new ParsedLlmResponse(true, status, objectId, confidence, quote, address);
     }
 
     private static bool TryGetTrimmedString(JsonElement root, string propertyName, out string value)

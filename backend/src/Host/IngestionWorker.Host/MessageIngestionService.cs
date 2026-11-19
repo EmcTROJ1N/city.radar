@@ -144,13 +144,15 @@ internal sealed class MessageIngestionService(
 /// <param name="RawMessageId">Запись <c>raw_messages</c>.</param>
 /// <param name="ObservedAt">Время публикации сообщения.</param>
 /// <param name="Confidence">Уверенность модели, 0..1.</param>
+/// <param name="Address">Адрес из сообщения; <c>null</c>, если не назван.</param>
 internal sealed record ObservationProposedPayload(
     Guid SourceId,
     Guid MapObjectId,
     string StatusCode,
     Guid RawMessageId,
     DateTimeOffset ObservedAt,
-    double Confidence)
+    double Confidence,
+    string? Address)
 {
     public static ObservationProposedPayload From(ObservationProposed observation) => new(
         observation.SourceId,
@@ -158,7 +160,8 @@ internal sealed record ObservationProposedPayload(
         observation.StatusCode,
         observation.RawMessageId,
         observation.ObservedAt,
-        observation.Confidence);
+        observation.Confidence,
+        observation.Address);
 }
 
 /// <summary>
@@ -173,6 +176,7 @@ internal sealed record ObservationProposedPayload(
 /// <param name="ProposedMapObjectId">Фиксация из ответа LLM; <c>null</c>, если не определена.</param>
 /// <param name="Confidence">Уверенность модели; <c>null</c>, если ответа не было.</param>
 /// <param name="EvidenceQuote">Цитата из ответа; <c>null</c>, если её нет.</param>
+/// <param name="Address">Адрес из ответа; <c>null</c>, если его нет.</param>
 internal sealed record ModerationCaseRequestedPayload(
     Guid SourceId,
     Guid RawMessageId,
@@ -181,7 +185,8 @@ internal sealed record ModerationCaseRequestedPayload(
     string? ProposedStatusCode,
     Guid? ProposedMapObjectId,
     double? Confidence,
-    string? EvidenceQuote)
+    string? EvidenceQuote,
+    string? Address)
 {
     public static ModerationCaseRequestedPayload From(ModerationCaseRequested request) => new(
         request.SourceId,
@@ -191,5 +196,6 @@ internal sealed record ModerationCaseRequestedPayload(
         request.ProposedStatusCode,
         request.ProposedMapObjectId,
         request.Confidence,
-        request.EvidenceQuote);
+        request.EvidenceQuote,
+        request.Address);
 }

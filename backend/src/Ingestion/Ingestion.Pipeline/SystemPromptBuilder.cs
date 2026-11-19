@@ -67,7 +67,8 @@ public static class SystemPromptBuilder
         lines.Add("  \"status\": \"код статуса из списка выше или null\",");
         lines.Add("  \"object_id\": \"идентификатор фиксации из списка ниже или null\",");
         lines.Add("  \"confidence\": 0.0,");
-        lines.Add("  \"evidence_quote\": \"дословная цитата из текста сообщения\"");
+        lines.Add("  \"evidence_quote\": \"дословная цитата из текста сообщения\",");
+        lines.Add("  \"address\": \"улица и дом из сообщения или null\"");
         lines.Add("}");
         lines.Add(string.Empty);
         lines.Add("Поля ответа:");
@@ -77,6 +78,8 @@ public static class SystemPromptBuilder
         lines.Add("- confidence (number, обязательно при relevant = true): уверенность от 0 до 1.");
         lines.Add("- evidence_quote (string, обязательно при relevant = true): дословная подстрока текста сообщения,");
         lines.Add("  подтверждающая статус. Копируй символы, регистр и пробелы без изменений; не пересказывай и не переводи.");
+        lines.Add("- address (string | null): адрес из сообщения в виде «улица дом» на русском, без города, этажа,");
+        lines.Add("  подъезда и квартиры (например, «Батищева 13», «Артёма 154б»); null, если номер дома не назван.");
         lines.Add(string.Empty);
 
         AppendObjects(lines, ctx.Objects);

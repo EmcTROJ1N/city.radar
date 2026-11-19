@@ -172,6 +172,29 @@ paths:
               schema: { $ref: '#/components/schemas/MapObjectCard' }
         '404': { $ref: '#/components/responses/NotFound' }
 
+  /map/objects/{id}/points:
+    get:
+      tags: [Map]
+      operationId: getZonePoints
+      summary: Временные точки зоны по адресам из сообщений
+      description: |
+        Для геозоны: актуальные сообщения с адресом группируются по адресу (побеждает самое свежее),
+        адрес геокодируется на сервере (OSM Nominatim), точки дальше 300 м от зоны отбрасываются.
+        За вызов — не больше 5 новых запросов к геокодеру; остальные адреса появятся при следующем
+        опросе. Точки не сохраняются. Для точечной фиксации — пустой список.
+      security: []
+      x-permission: map.read
+      parameters:
+        - $ref: '#/components/parameters/MapObjectId'
+      responses:
+        '200':
+          description: Точки зоны
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ZonePointsResponse' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
   /objects/{id}/observations:
     get:
       tags: [Observations]
@@ -1800,6 +1823,33 @@ components:
               type: array
               items: { $ref: '#/components/schemas/SourceCardView' }
 
+    ZonePointsResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/ZonePoint' }
+
+    ZonePoint:
+      type: object
+      description: Временная точка по адресу из сообщений зоны; статус — самого свежего сообщения
+      required: [address, location, status, observedAt, observationCount]
+      properties:
+        address: { type: string, description: Адрес из сообщения («улица дом») }
+        location:
+          type: object
+          required: [lat, lon]
+          properties:
+            lat: { type: number }
+            lon: { type: number }
+        status: { $ref: '#/components/schemas/SourceStatusPublic' }
+        observedAt: { type: string, format: date-time }
+        text:
+          type: [string, 'null']
+          description: Текст самого свежего сообщения
+        observationCount: { type: integer, minimum: 1 }
+
     PublicObservation:
       type: object
       description: Отметка без идентификатора автора
@@ -1821,6 +1871,9 @@ components:
         geoDistanceM:
           type: [integer, 'null']
           description: Расстояние от пользователя до фиксации, информационный признак
+        address:
+          type: [string, 'null']
+          description: Адрес из сообщения чата («улица дом»); у ручных отметок не заполняется
     ObservationPage:
       type: object
       required: [items, nextCursor]

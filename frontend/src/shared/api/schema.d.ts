@@ -83,6 +83,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/map/objects/{id}/points": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Временные точки зоны по адресам из сообщений
+         * @description Для геозоны: актуальные сообщения с адресом группируются по адресу (побеждает самое свежее),
+         *     адрес геокодируется на сервере (OSM Nominatim), точки дальше 300 м от зоны отбрасываются.
+         *     За вызов — не больше 5 новых запросов к геокодеру; остальные адреса появятся при следующем
+         *     опросе. Точки не сохраняются. Для точечной фиксации — пустой список.
+         */
+        get: operations["getZonePoints"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/objects/{id}/observations": {
         parameters: {
             query?: never;
@@ -1022,6 +1045,24 @@ export interface components {
         MapObjectCard: components["schemas"]["MapFeature"] & {
             sources: components["schemas"]["SourceCardView"][];
         };
+        ZonePointsResponse: {
+            items: components["schemas"]["ZonePoint"][];
+        };
+        /** @description Временная точка по адресу из сообщений зоны; статус — самого свежего сообщения */
+        ZonePoint: {
+            /** @description Адрес из сообщения («улица дом») */
+            address: string;
+            location: {
+                lat: number;
+                lon: number;
+            };
+            status: components["schemas"]["SourceStatusPublic"];
+            /** Format: date-time */
+            observedAt: string;
+            /** @description Текст самого свежего сообщения */
+            text?: string | null;
+            observationCount: number;
+        };
         /** @description Отметка без идентификатора автора */
         PublicObservation: {
             /** Format: uuid */
@@ -1038,6 +1079,8 @@ export interface components {
             confidence?: number | null;
             /** @description Расстояние от пользователя до фиксации, информационный признак */
             geoDistanceM?: number | null;
+            /** @description Адрес из сообщения чата («улица дом»); у ручных отметок не заполняется */
+            address?: string | null;
         };
         ObservationPage: {
             items: components["schemas"]["PublicObservation"][];
@@ -2024,6 +2067,31 @@ export interface operations {
                 };
             };
             404: components["responses"]["NotFound"];
+        };
+    };
+    getZonePoints: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Идентификатор фиксации */
+                id: components["parameters"]["MapObjectId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Точки зоны */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ZonePointsResponse"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
         };
     };
     listObjectObservations: {

@@ -52,6 +52,7 @@ internal sealed class ObservationConfiguration : IEntityTypeConfiguration<Observ
         builder.Property(observation => observation.Confidence).HasColumnType("real");
         builder.Property(observation => observation.RawMessageId).HasColumnType("uuid");
         builder.Property(observation => observation.Comment).HasColumnType("text");
+        builder.Property(observation => observation.Address).HasColumnType("text");
         builder.Property(observation => observation.GeoDistanceM).HasColumnType("integer");
         builder.Property(observation => observation.IsRetracted)
             .HasColumnType("boolean")

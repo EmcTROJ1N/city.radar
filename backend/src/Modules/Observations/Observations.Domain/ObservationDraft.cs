@@ -15,6 +15,7 @@ namespace Observations.Domain;
 /// <param name="Confidence">Достоверность 0..1; информационный показатель, на выбор статуса не влияет.</param>
 /// <param name="RawPayloadRef">Ссылка на исходное сообщение или иные исходные данные.</param>
 /// <param name="Comment">Необязательный текст ручной отметки.</param>
+/// <param name="Address">Адрес из сообщения чата («улица дом»); у ручных отметок не заполняется.</param>
 public sealed record ObservationDraft(
     Guid MapObjectId,
     Guid SourceId,
@@ -25,4 +26,5 @@ public sealed record ObservationDraft(
     Guid? ReporterId = null,
     float? Confidence = null,
     string? RawPayloadRef = null,
-    string? Comment = null);
+    string? Comment = null,
+    string? Address = null);

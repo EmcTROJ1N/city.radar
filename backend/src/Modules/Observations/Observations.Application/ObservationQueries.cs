@@ -46,6 +46,7 @@ public interface IObservationReadStore
 /// <param name="Text">Сообщение чата или комментарий пользователя.</param>
 /// <param name="Confidence">Достоверность 0..1; информационный показатель.</param>
 /// <param name="GeoDistanceM">Расстояние от пользователя до фиксации, метры.</param>
+/// <param name="Address">Адрес из сообщения чата; <c>null</c>, если не назван.</param>
 public sealed record PublicObservationView(
     Guid Id,
     PublicStatusView Status,
@@ -55,7 +56,8 @@ public sealed record PublicObservationView(
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? SourceName,
     string? Text,
     float? Confidence,
-    int? GeoDistanceM);
+    int? GeoDistanceM,
+    string? Address = null);
 
 /// <summary>Публичные поля статуса источника (схема <c>SourceStatusPublic</c>).</summary>
 /// <param name="Id">Идентификатор статуса источника.</param>

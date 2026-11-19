@@ -12,7 +12,7 @@ import {
 } from '@angular/core';
 import { environment } from '@env/environment';
 import { Icon } from '../ui/icon';
-import { DrawMode, MapAdapter, MapGeometry, MapItem, MapView } from './map-adapter';
+import { DrawMode, MapAdapter, MapGeometry, MapItem, MapView, TempPoint } from './map-adapter';
 import { MapLibreAdapter } from './maplibre/maplibre-adapter';
 
 /** Карта на MapLibre: принимает готовые MapItem, движок не знает про API. */
@@ -70,6 +70,8 @@ export class MapViewComponent {
   readonly userLocation = input(false);
   /** Стартовый вид по набору геометрий (например, по всем геозонам). */
   readonly fitGeometries = input<readonly MapGeometry[] | null>(null);
+  /** Временные точки выбранной геозоны. */
+  readonly tempPoints = input<readonly TempPoint[] | null>(null);
 
   readonly selectItem = output<string>();
   readonly viewChange = output<MapView>();
@@ -142,6 +144,11 @@ export class MapViewComponent {
       const enabled = this.userLocation();
       if (!this.ready() || !enabled) return;
       this.adapter?.startGeolocation();
+    });
+    effect(() => {
+      const points = this.tempPoints();
+      if (!this.ready()) return;
+      this.adapter?.setTempPoints(points);
     });
     effect(() => {
       const geometries = this.fitGeometries();

@@ -68,6 +68,7 @@ public sealed class ObservationProposedHandler(
         var statusCode = ReadRequiredString(payload, "statusCode");
         var observedAt = ReadRequiredTimestamp(payload, "observedAt");
         var confidence = ReadOptionalNumber(payload, "confidence");
+        var address = ReadOptionalString(payload, "address");
 
         // Ключ идемпотентности: одно сообщение + одна фиксация = одно наблюдение.
         var observationId = DeterministicId(messageId, mapObjectId);
@@ -166,7 +167,8 @@ public sealed class ObservationProposedHandler(
                     ReporterId: null,
                     Confidence: confidence,
                     RawPayloadRef: rawMessageId.ToString(),
-                    Comment: null),
+                    Comment: null,
+                    Address: address),
                 policy.Timeout,
                 now,
                 observationId,
@@ -257,6 +259,11 @@ public sealed class ObservationProposedHandler(
             : throw new ArgumentException(
                 $"В сообщении ObservationProposed отсутствует корректный {name}.",
                 nameof(payload));
+
+    private static string? ReadOptionalString(JsonElement payload, string name) =>
+        payload.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
+            ? value.GetString()
+            : null;
 
     private static float? ReadOptionalNumber(JsonElement payload, string name) =>
         payload.TryGetProperty(name, out var value)

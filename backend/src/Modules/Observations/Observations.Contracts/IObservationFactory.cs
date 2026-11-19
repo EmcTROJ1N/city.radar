@@ -51,7 +51,8 @@ public sealed record ModeratedObservation(
     Guid RawMessageId,
     DateTimeOffset ObservedAt,
     SourceKind Kind,
-    float? Confidence);
+    float? Confidence,
+    string? Address = null);
 
 /// <summary>
 /// Тип источника наблюдения в контракте модуля наблюдений.

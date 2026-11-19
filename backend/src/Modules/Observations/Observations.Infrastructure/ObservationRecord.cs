@@ -35,6 +35,8 @@ internal sealed class ObservationRecord
 
     public string? Comment { get; set; }
 
+    public string? Address { get; set; }
+
     public int? GeoDistanceM { get; set; }
 
     public bool IsRetracted { get; set; }
@@ -58,7 +60,8 @@ internal sealed class ObservationRecord
             ReporterId,
             Confidence,
             RawMessageId?.ToString(),
-            Comment);
+            Comment,
+            Address);
 
         return Observation.Restore(Id, draft, ExpiresAt, IsRetracted);
     }
@@ -86,6 +89,7 @@ internal sealed class ObservationRecord
             Confidence = observation.Confidence,
             RawMessageId = ParseRawMessageId(observation),
             Comment = observation.Comment,
+            Address = observation.Address,
             IsRetracted = observation.IsRetracted,
         };
     }

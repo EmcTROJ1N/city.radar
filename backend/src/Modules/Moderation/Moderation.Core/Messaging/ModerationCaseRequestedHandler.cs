@@ -74,6 +74,7 @@ internal sealed class ModerationCaseRequestedHandler(
             confidence = ReadNumber(payload, "confidence"),
             evidenceQuote = ReadString(payload, "evidenceQuote"),
             reason = ReadString(payload, "reason"),
+            address = ReadString(payload, "address"),
         };
 
         var input = new NewModerationCase(

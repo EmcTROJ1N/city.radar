@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type { MapItem } from '../map-adapter';
-import { applyMarkerClasses, overlayBeforeLayerId, zoneFeatureCollection } from './maplibre-adapter';
+import {
+  applyMarkerClasses,
+  overlayBeforeLayerId,
+  tempPointElement,
+  tempPointPopupContent,
+  zoneFeatureCollection,
+} from './maplibre-adapter';
 
 const ZONE: MapItem = {
   id: '1d9f4c6e-4f3a-4c1e-9a0e-77b2c5a1e001',
@@ -135,5 +141,40 @@ describe('applyMarkerClasses', () => {
 
     expect(element.classList.contains('custom')).toBe(true);
     expect(element.classList.contains('map-pin')).toBe(true);
+  });
+});
+
+describe('tempPointElement', () => {
+  const point = {
+    id: 'тренева 3в',
+    lngLat: [37.78, 48.035] as [number, number],
+    tone: 'limited' as const,
+    title: 'Тренёва 3в',
+    subtitle: 'Слабый напор · 5 мин назад',
+    text: '<b>Тренёва 3в</b>, 5 этаж, напор слабый',
+  };
+
+  it('создаёт кнопку с цветом статуса и подписью для экранного диктора', () => {
+    const element = tempPointElement(point);
+
+    expect(element.tagName).toBe('BUTTON');
+    expect(element.classList.contains('map-temp-point')).toBe(true);
+    expect(element.classList.contains('tone-limited')).toBe(true);
+    expect(element.getAttribute('aria-label')).toBe('Тренёва 3в: Слабый напор · 5 мин назад');
+  });
+
+  it('подсказка — адрес, статус и текст сообщения как текст, без разметки', () => {
+    const content = tempPointPopupContent(point);
+
+    expect(content.textContent).toContain('Тренёва 3в');
+    expect(content.textContent).toContain('Слабый напор · 5 мин назад');
+    expect(content.textContent).toContain('<b>Тренёва 3в</b>, 5 этаж, напор слабый');
+    expect(content.querySelector('b')).toBeNull();
+  });
+
+  it('подсказка без текста сообщения не содержит пустую цитату', () => {
+    const content = tempPointPopupContent({ ...point, text: null });
+
+    expect(content.querySelector('blockquote')).toBeNull();
   });
 });

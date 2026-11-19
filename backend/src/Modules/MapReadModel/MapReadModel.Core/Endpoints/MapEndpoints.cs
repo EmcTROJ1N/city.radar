@@ -1,4 +1,7 @@
+using System.Globalization;
+
 using BuildingBlocks.Web;
+using BuildingBlocks.Web.RateLimiting;
 
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -31,6 +34,7 @@ public static class MapEndpoints
 
         group.MapGet("/features", GetFeaturesAsync);
         group.MapGet("/objects/{id:guid}", GetObjectAsync);
+        group.MapGet("/objects/{id:guid}/points", GetPointsAsync);
 
         return endpoints;
     }
@@ -49,6 +53,46 @@ public static class MapEndpoints
         return card is null
             ? ProblemResponses.NotFound($"Фиксация {id} не существует")
             : Results.Ok(card);
+    }
+
+    /// <summary>
+    /// <c>GET /map/objects/{id}/points</c>: временные точки по адресам из сообщений зоны.
+    /// Публичный; лимит по IP, потому что промах кэша геокодера стоит запроса к Nominatim.
+    /// </summary>
+    private static async Task<IResult> GetPointsAsync(
+        Guid id,
+        HttpContext context,
+        ZonePointsQuery query,
+        IRateLimiter limiter,
+        RateLimitOptions options,
+        CancellationToken ct)
+    {
+        if (options.Enabled)
+        {
+            var ip = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+            var result = await limiter.TryAcquireAsync(
+                "rl:points:ip:" + ip,
+                options.PointsIpLimit,
+                options.PointsIpWindow,
+                ct);
+            if (!result.Allowed)
+            {
+                context.Response.Headers.RetryAfter =
+                    result.RetryAfterSeconds.ToString(CultureInfo.InvariantCulture);
+
+                return Results.Problem(
+                    detail: "Повторите попытку позже",
+                    statusCode: StatusCodes.Status429TooManyRequests,
+                    title: "Слишком много запросов",
+                    type: "about:blank");
+            }
+        }
+
+        var points = await query.GetAsync(id, ct);
+
+        return points is null
+            ? ProblemResponses.NotFound($"Фиксация {id} не существует")
+            : Results.Ok(points);
     }
 
     private static async Task<IResult> GetFeaturesAsync(

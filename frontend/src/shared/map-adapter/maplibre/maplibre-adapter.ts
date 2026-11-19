@@ -1,4 +1,4 @@
-import { AttributionControl, Map as MapLibreMap, Marker, NavigationControl } from 'maplibre-gl';
+import { AttributionControl, Map as MapLibreMap, Marker, NavigationControl, Popup } from 'maplibre-gl';
 import type {
   ExpressionSpecification,
   FillLayerSpecification,
@@ -9,7 +9,17 @@ import type {
 import type { Feature, FeatureCollection, LineString, Point, Polygon } from 'geojson';
 import { Tone } from '../../lib/tone';
 import { IconName, iconPaths } from '../../ui/icon';
-import { DrawMode, BBox, LngLat, MapAdapter, MapGeometry, MapItem, MapStyleUrls, MapView } from '../map-adapter';
+import {
+  DrawMode,
+  BBox,
+  LngLat,
+  MapAdapter,
+  MapGeometry,
+  MapItem,
+  MapStyleUrls,
+  MapView,
+  TempPoint,
+} from '../map-adapter';
 import { bboxOf, bboxOfMany, centroid, closeRing, isValidGeometry, isValidPolygon } from '../geometry';
 import { geolocationErrorMessage, userLocationFrom } from '../geolocation';
 
@@ -99,6 +109,37 @@ export function applyMarkerClasses(element: HTMLElement, classes: string[]): voi
   element.classList.add(...classes);
 }
 
+/** Маркер временной точки: кнопка цвета статуса; подробности — в подсказке по клику. */
+export function tempPointElement(point: TempPoint): HTMLButtonElement {
+  const element = document.createElement('button');
+  element.type = 'button';
+  element.className = `map-temp-point tone-${point.tone}`;
+  element.setAttribute('aria-label', `${point.title}: ${point.subtitle}`);
+  element.title = point.title;
+  return element;
+}
+
+/** Содержимое подсказки временной точки. Только textContent: текст сообщения — данные из чата. */
+export function tempPointPopupContent(point: TempPoint): HTMLElement {
+  const root = document.createElement('div');
+  root.className = 'map-temp-popup';
+
+  const title = document.createElement('strong');
+  title.textContent = point.title;
+  const subtitle = document.createElement('small');
+  subtitle.className = `tone-${point.tone}`;
+  subtitle.textContent = point.subtitle;
+  root.append(title, subtitle);
+
+  if (point.text) {
+    const quote = document.createElement('blockquote');
+    quote.textContent = point.text;
+    root.append(quote);
+  }
+
+  return root;
+}
+
 /**
  * id слоя подложки, перед которым вставляем свои слои: первая подпись, идущая
  * после последнего «земляного» слоя (заливки, линии, фон).
@@ -141,6 +182,8 @@ export class MapLibreAdapter implements MapAdapter {
   private viewTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly pins = new Map<string, { marker: Marker; element: HTMLButtonElement }>();
   private readonly labels = new Map<string, { marker: Marker; element: HTMLDivElement }>();
+  private tempMarkers: Marker[] = [];
+  private tempPopup: Popup | null = null;
   private readonly warnedInvalid = new Set<string>();
   private locationErrorCb: ((message: string) => void) | null = null;
   private userMarker: Marker | null = null;
@@ -222,6 +265,7 @@ export class MapLibreAdapter implements MapAdapter {
     this.appliedStyleUrl = null;
     for (const { marker } of this.pins.values()) marker.remove();
     for (const { marker } of this.labels.values()) marker.remove();
+    this.setTempPoints(null);
     this.removeDraftMarker();
     this.removeVertexMarkers();
     this.pins.clear();
@@ -245,6 +289,31 @@ export class MapLibreAdapter implements MapAdapter {
       console.warn(`Карта: фиксация «${item.name}» (${item.id}) пропущена — некорректные координаты`);
     }
     return false;
+  }
+
+  setTempPoints(points: readonly TempPoint[] | null): void {
+    this.tempPopup?.remove();
+    this.tempPopup = null;
+    for (const marker of this.tempMarkers) marker.remove();
+    this.tempMarkers = [];
+
+    const map = this.map;
+    if (!map || !points?.length) return;
+
+    // HTML-маркеры переживают смену стиля (тему) — пересоздавать при style.load не нужно.
+    for (const point of points) {
+      const element = tempPointElement(point);
+      const marker = new Marker({ element }).setLngLat(point.lngLat).addTo(map);
+      element.addEventListener('click', (event) => {
+        event.stopPropagation();
+        this.tempPopup?.remove();
+        this.tempPopup = new Popup({ offset: 12, maxWidth: '280px' })
+          .setLngLat(point.lngLat)
+          .setDOMContent(tempPointPopupContent(point))
+          .addTo(map);
+      });
+      this.tempMarkers.push(marker);
+    }
   }
 
   setSelected(id: string | null): void {

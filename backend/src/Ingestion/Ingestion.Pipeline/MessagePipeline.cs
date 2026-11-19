@@ -123,6 +123,10 @@ public sealed class MessagePipeline
         }
 
         var parsed = LlmResponseParser.Parse(raw);
+        if (parsed is not null)
+        {
+            parsed = parsed with { Address = ExtractionValidator.SanitizeAddress(parsed.Address) };
+        }
         if (parsed is null)
         {
             return Moderate(
@@ -214,7 +218,8 @@ public sealed class MessagePipeline
                     parsed.Status ?? string.Empty,
                     rawMessageId,
                     msg.PostedAt,
-                    parsed.Confidence),
+                    parsed.Confidence,
+                    parsed.Address),
             ];
         }
         else
@@ -226,7 +231,8 @@ public sealed class MessagePipeline
                     parsed.Status ?? string.Empty,
                     rawMessageId,
                     msg.PostedAt,
-                    parsed.Confidence))
+                    parsed.Confidence,
+                    parsed.Address))
                 .ToList();
         }
 
@@ -252,7 +258,8 @@ public sealed class MessagePipeline
             response?.Status,
             proposedMapObjectId,
             response?.Confidence,
-            evidenceQuote);
+            evidenceQuote,
+            response?.Address);
 
         return new PipelineDecision.Moderate(request);
     }

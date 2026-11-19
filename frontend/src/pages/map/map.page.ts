@@ -8,10 +8,11 @@ import type {
   MapFeature,
   RetractResult,
   StatusView,
+  ZonePointsResponse,
 } from '@shared/api/types';
-import { dateTime } from '@shared/lib/format';
+import { agoIso, dateTime } from '@shared/lib/format';
 import { onlineSignal } from '@shared/lib/online';
-import { bboxParam, LngLat, MapGeometry, MapItem, MapView } from '@shared/map-adapter/map-adapter';
+import { bboxParam, LngLat, MapGeometry, MapItem, MapView, TempPoint } from '@shared/map-adapter/map-adapter';
 import { MapViewComponent } from '@shared/map-adapter/map-view';
 import { Icon, normalizeIcon } from '@shared/ui/icon';
 import { ToastService } from '@shared/ui/toast';
@@ -38,6 +39,37 @@ export function initialFocus(items: MapItem[], id: string | null): MapGeometry |
   return items.find((item) => item.id === id)?.geometry ?? null;
 }
 
+/** Геозона, для которой показывать временные точки: выбрана и это полигон. */
+export function zoneIdForPoints(items: MapItem[], selectedId: string | null): string | null {
+  if (!selectedId) return null;
+  const item = items.find((candidate) => candidate.id === selectedId);
+  return item?.geometry.type === 'Polygon' ? item.id : null;
+}
+
+/**
+ * Точки на время загрузки: при обновлении той же зоны прежние остаются до ответа, при смене зоны
+ * или снятии выбора — сразу убираются, чтобы не показывать чужие точки.
+ */
+export function pointsBeforeLoad(
+  current: TempPoint[] | null,
+  loadedZoneId: string | null,
+  nextZoneId: string | null,
+): TempPoint[] | null {
+  return loadedZoneId === nextZoneId ? current : null;
+}
+
+/** Ответ API → временные точки карты. */
+export function toTempPoints(response: ZonePointsResponse, now = Date.now()): TempPoint[] {
+  return response.items.map((point) => ({
+    id: point.address,
+    lngLat: [point.location.lon, point.location.lat],
+    tone: point.status.color,
+    title: point.address,
+    subtitle: `${point.status.name} · ${agoIso(point.observedAt, now)} · сообщений: ${point.observationCount}`,
+    text: point.text ?? null,
+  }));
+}
+
 /** Публичная карта: bbox-опрос, фильтры, карточка фиксации. */
 @Component({
   selector: 'app-map-page',
@@ -46,7 +78,7 @@ export function initialFocus(items: MapItem[], id: string | null): MapGeometry |
   template: `
     <div class="mapview">
       <app-map-view class="canvas" [items]="items()" [selectedId]="selectedId()" [focus]="focus()"
-        [fitGeometries]="coverage()" [userLocation]="true"
+        [fitGeometries]="coverage()" [userLocation]="true" [tempPoints]="tempPoints()"
         (selectItem)="select($event)" (viewChange)="onView($event)"
         (locationError)="onLocationError($event)" />
 
@@ -146,6 +178,11 @@ export class MapPage {
   protected readonly panelOpen = signal(false);
   protected readonly disclaimerOpen = signal(false);
   protected readonly refreshKey = signal(0);
+  /** Временные точки выбранной геозоны: только в памяти страницы, пока зона выбрана. */
+  protected readonly tempPoints = signal<TempPoint[] | null>(null);
+  private readonly pointsZoneId = computed(() => zoneIdForPoints(this.items(), this.selectedId()));
+  private pointsSeq = 0;
+  private pointsLoadedZoneId: string | null = null;
 
   private readonly initialObjectId = this.route.snapshot.queryParamMap.get('object');
   private focusedInitial = false;
@@ -190,6 +227,13 @@ export class MapPage {
         queryParams: { object },
         replaceUrl: true,
       });
+    });
+
+    // Точки выбранной геозоны: при выборе и вместе с обновлением карты; снятие выбора их убирает.
+    effect(() => {
+      const zoneId = this.pointsZoneId();
+      this.refreshKey();
+      untracked(() => void this.loadPoints(zoneId));
     });
 
     // Прямая ссылка на фиксацию важнее стартового вида: не перебиваем её обзором геозон.
@@ -265,6 +309,21 @@ export class MapPage {
       if (geometries.length) this.coverage.set(geometries);
     } catch {
       // Стартовый вид по умолчанию — рабочая альтернатива, отдельного сообщения не нужно.
+    }
+  }
+
+  private async loadPoints(zoneId: string | null): Promise<void> {
+    const seq = ++this.pointsSeq;
+    this.tempPoints.set(pointsBeforeLoad(this.tempPoints(), this.pointsLoadedZoneId, zoneId));
+    this.pointsLoadedZoneId = zoneId;
+    if (!zoneId) return;
+    try {
+      const response = await this.api.getPoints(zoneId);
+      if (seq === this.pointsSeq) this.tempPoints.set(toTempPoints(response));
+    } catch (err) {
+      // Точки — дополнение к статусу зоны: при ошибке обновления оставляем прежние точки этой же
+      // зоны (чужие уже убраны), без тоста на каждый опрос.
+      console.warn('Карта: не удалось загрузить точки зоны', err);
     }
   }
 

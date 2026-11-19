@@ -1,5 +1,8 @@
 using BuildingBlocks.Web.Caching;
 
+using MapReadModel.Core.Geocoding;
+
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
@@ -28,6 +31,15 @@ public static class MapReadModelServiceCollectionExtensions
         services.AddScoped<MapFeaturesService>();
         services.AddScoped<ObjectCardQuery>();
         services.AddScoped<MapCache>();
+        services.AddScoped<ZonePointsQuery>();
+
+        // Геокодер — синглтон: общий на процесс лимит «1 запрос в секунду» и кэш в памяти.
+        services.TryAddSingleton(provider =>
+            GeocodingOptions.FromConfiguration(provider.GetRequiredService<IConfiguration>()));
+        services.TryAddSingleton<IGeocoder>(provider => new NominatimGeocoder(
+            provider.GetRequiredService<GeocodingOptions>(),
+            provider.GetRequiredService<IResponseCache>(),
+            provider.GetRequiredService<TimeProvider>()));
 
         // Версия состояния карты — общий на процесс кэш на 1 секунду: провайдер
         // синглтон, поэтому ему нужен scope factory для получения scoped MayakDbContext.

@@ -55,7 +55,8 @@ internal sealed class ObservationFactory(
                 ReporterId: null,
                 Confidence: m.Confidence,
                 RawPayloadRef: m.RawMessageId.ToString(),
-                Comment: null),
+                Comment: null,
+                Address: m.Address),
             policy.Timeout,
             now,
             allowExpired: true);

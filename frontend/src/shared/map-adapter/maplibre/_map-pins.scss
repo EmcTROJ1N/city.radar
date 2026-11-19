@@ -171,3 +171,52 @@
     box-shadow: 0 0 0 2px color-mix(in srgb, var(--tone, var(--brand)) 35%, transparent), var(--shadow-float);
   }
 }
+
+// Временная точка по адресу из сообщений выбранной геозоны: небольшая, чтобы не спорить
+// с точками-фиксациями; подробности — в подсказке по клику.
+.map-temp-point {
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--tone, var(--st-stale));
+  box-shadow: 0 0 0 2px var(--surface), var(--shadow-float);
+  cursor: pointer;
+
+  &:focus-visible {
+    outline: 2px solid var(--brand);
+    outline-offset: 2px;
+  }
+}
+
+.maplibregl-popup-content:has(.map-temp-popup) {
+  padding: 10px 12px;
+  border-radius: var(--r-md);
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow-float);
+}
+
+.map-temp-popup {
+  display: grid;
+  gap: 4px;
+  font: 400 13px/1.35 var(--font-ui);
+  overflow-wrap: anywhere;
+
+  strong {
+    font-weight: 600;
+  }
+
+  small {
+    color: var(--tone, var(--ink-3));
+    font-weight: 600;
+  }
+
+  blockquote {
+    margin: 2px 0 0;
+    padding-left: 8px;
+    border-left: 3px solid var(--line);
+    color: var(--ink-2);
+  }
+}

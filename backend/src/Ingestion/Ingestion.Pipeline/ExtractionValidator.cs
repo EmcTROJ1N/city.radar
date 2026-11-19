@@ -91,6 +91,25 @@ public static class ExtractionValidator
     /// Точное (порядковое) совпадение кода статуса с одним из кодов источника. Компаратор
     /// переданного множества не используется намеренно: <c>"OK"</c> не должен совпасть с <c>"ok"</c>.
     /// </summary>
+    /// <summary>Максимальная длина адреса из ответа LLM.</summary>
+    public const int MaxAddressLength = 120;
+
+    /// <summary>
+    /// Проверяет адрес из ответа LLM: слишком длинный или с украинскими буквами (C-01) отбрасывается.
+    /// Статус от этого не зависит — адрес нужен только для точек на карте.
+    /// </summary>
+    /// <param name="address">Адрес из ответа LLM.</param>
+    /// <returns>Тот же адрес либо <c>null</c>, если он недопустим.</returns>
+    public static string? SanitizeAddress(string? address)
+    {
+        if (string.IsNullOrWhiteSpace(address) || address.Length > MaxAddressLength)
+        {
+            return null;
+        }
+
+        return address.AsSpan().IndexOfAny("іїєґІЇЄҐ") >= 0 ? null : address;
+    }
+
     private static bool IsStatusCodeAllowed(string? status, IReadOnlySet<string> statusCodes)
     {
         if (string.IsNullOrEmpty(status))

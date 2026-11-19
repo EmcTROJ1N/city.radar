@@ -176,7 +176,8 @@ internal sealed class ApproveCaseHandler(
                         rawMessageId,
                         postedAt.Value,
                         kind,
-                        proposed.Confidence),
+                        proposed.Confidence,
+                        proposed.Address),
                     ct);
 
                 observationIds.Add(observationId);
@@ -414,7 +415,7 @@ internal sealed class ApproveCaseHandler(
     {
         if (string.IsNullOrWhiteSpace(json))
         {
-            return new ProposedData(null, null, null);
+            return new ProposedData(null, null, null, null);
         }
 
         try
@@ -425,11 +426,12 @@ internal sealed class ApproveCaseHandler(
             return new ProposedData(
                 ReadString(root, "statusCode"),
                 ReadGuid(root, "mapObjectId"),
-                ReadFloat(root, "confidence"));
+                ReadFloat(root, "confidence"),
+                ReadString(root, "address"));
         }
         catch (JsonException)
         {
-            return new ProposedData(null, null, null);
+            return new ProposedData(null, null, null, null);
         }
     }
 
@@ -512,5 +514,5 @@ internal sealed class ApproveCaseHandler(
     }
 
     /// <summary>Поля <c>moderation_cases.proposed</c>, нужные для одобрения.</summary>
-    private sealed record ProposedData(string? StatusCode, Guid? MapObjectId, float? Confidence);
+    private sealed record ProposedData(string? StatusCode, Guid? MapObjectId, float? Confidence, string? Address);
 }

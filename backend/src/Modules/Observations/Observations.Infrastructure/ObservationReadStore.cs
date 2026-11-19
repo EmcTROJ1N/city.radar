@@ -39,7 +39,8 @@ internal sealed class ObservationReadStore(MayakDbContext db) : IObservationRead
                    s.name,
                    case when o.source_type in ('telegram', 'max') then rm.text else o.comment end,
                    o.confidence,
-                   o.geo_distance_m
+                   o.geo_distance_m,
+                   o.address
             from observations o
             join source_statuses ss on ss.id = o.source_status_id and ss.source_id = o.source_id
             join sources s on s.id = o.source_id
@@ -75,7 +76,8 @@ internal sealed class ObservationReadStore(MayakDbContext db) : IObservationRead
                 reader.IsDBNull(9) ? null : reader.GetString(9),
                 reader.IsDBNull(10) ? null : reader.GetString(10),
                 reader.IsDBNull(11) ? null : reader.GetFloat(11),
-                reader.IsDBNull(12) ? null : reader.GetInt32(12)));
+                reader.IsDBNull(12) ? null : reader.GetInt32(12),
+                reader.IsDBNull(13) ? null : reader.GetString(13)));
         }
 
         return items;
