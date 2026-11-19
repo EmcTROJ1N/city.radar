@@ -36,6 +36,14 @@ public interface IObservationRepository
     /// <param name="ct">Токен отмены.</param>
     Task<IReadOnlyList<ObservationFact>> GetFactsAsync(Guid mapObjectId, CancellationToken ct);
 
+    /// <summary>
+    /// Является ли фиксация зоной (полигоном): статус зоны считается сводкой
+    /// <see cref="StatusResolver.ResolveZone"/>, а не «последняя побеждает».
+    /// </summary>
+    /// <param name="mapObjectId">Фиксация.</param>
+    /// <param name="ct">Токен отмены.</param>
+    Task<bool> IsZoneAsync(Guid mapObjectId, CancellationToken ct);
+
     /// <summary>Наблюдение по идентификатору; <c>null</c>, если его нет.</summary>
     /// <param name="id">Идентификатор наблюдения.</param>
     /// <param name="ct">Токен отмены.</param>

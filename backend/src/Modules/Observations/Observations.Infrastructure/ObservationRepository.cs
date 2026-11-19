@@ -42,6 +42,8 @@ internal sealed class ObservationRepository(MayakDbContext db) : IObservationRep
         // Таймаут берётся из source_policies источника: таблица принадлежит модулю
         // источников, поэтому читаем её read-only SQL-проекцией, не заводя чужую сущность
         // в модель. Отозванные строки отфильтрованы в запросе; истёкшие — резолвер.
+        // Цвет статуса и «частичный» статус источника (первый limited по порядку показа)
+        // нужны только сводке по зоне.
         const string Sql = """
             select o.id,
                    o.source_id,
@@ -51,9 +53,16 @@ internal sealed class ObservationRepository(MayakDbContext db) : IObservationRep
                    o.received_at,
                    o.expires_at,
                    p.timeout,
-                   o.is_retracted
+                   o.is_retracted,
+                   ss.color,
+                   (select ls.id
+                    from source_statuses ls
+                    where ls.source_id = o.source_id and ls.color = 'limited'
+                    order by ls.sort_order, ls.id
+                    limit 1)
             from observations o
             join source_policies p on p.source_id = o.source_id
+            join source_statuses ss on ss.id = o.source_status_id
             where o.map_object_id = @map_object_id
               and not o.is_retracted
             order by o.observed_at desc, o.received_at desc
@@ -92,7 +101,9 @@ internal sealed class ObservationRepository(MayakDbContext db) : IObservationRep
                     ReadTimestamp(reader, 5),
                     ReadTimestamp(reader, 6),
                     reader.GetFieldValue<TimeSpan>(7),
-                    reader.GetBoolean(8)));
+                    reader.GetBoolean(8),
+                    ParseTone(reader.GetString(9)),
+                    reader.IsDBNull(10) ? null : reader.GetGuid(10)));
             }
 
             return facts;
@@ -104,6 +115,16 @@ internal sealed class ObservationRepository(MayakDbContext db) : IObservationRep
                 await db.Database.CloseConnectionAsync();
             }
         }
+    }
+
+    public async Task<bool> IsZoneAsync(Guid mapObjectId, CancellationToken ct)
+    {
+        // map_objects — таблица каталога: читаем один признак SQL-проекцией.
+        var kinds = await db.Database
+            .SqlQuery<string>($"select coverage_kind as \"Value\" from map_objects where id = {mapObjectId}")
+            .ToListAsync(ct);
+
+        return kinds is ["polygon"];
     }
 
     public async Task<Observation?> GetAsync(Guid id, CancellationToken ct)
@@ -267,6 +288,13 @@ internal sealed class ObservationRepository(MayakDbContext db) : IObservationRep
     }
 
     /// <summary>Читает <c>timestamptz</c> как UTC <see cref="DateTimeOffset"/>.</summary>
+    private static StatusTone ParseTone(string color) => color switch
+    {
+        "ok" => StatusTone.Positive,
+        "none" => StatusTone.Negative,
+        _ => StatusTone.Limited,
+    };
+
     private static DateTimeOffset ReadTimestamp(DbDataReader reader, int ordinal) =>
         new(DateTime.SpecifyKind(reader.GetFieldValue<DateTime>(ordinal), DateTimeKind.Utc));
 }

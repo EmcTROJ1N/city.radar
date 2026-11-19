@@ -392,6 +392,104 @@ public sealed class StatusResolverTests
             ObservedAt: observedAt,
             ReceivedAt: observedAt);
 
+    private static readonly Guid OkStatusId = Guid.NewGuid();
+    private static readonly Guid NoneStatusId = Guid.NewGuid();
+    private static readonly Guid WeakStatusId = Guid.NewGuid();
+    private static readonly Guid PartialStatusId = Guid.NewGuid();
+
+    private static ObservationFact ZoneFact(int minutesAgo, StatusTone tone, Guid statusId, Guid? partialStatusId = null) =>
+        Fact(Now.AddMinutes(-minutesAgo), sourceStatusId: statusId, tone: tone, partialStatusId: partialStatusId);
+
+    [Fact]
+    public void Zone_without_water_everywhere_is_negative()
+    {
+        var facts = new[]
+        {
+            ZoneFact(30, StatusTone.Negative, NoneStatusId, PartialStatusId),
+            ZoneFact(10, StatusTone.Negative, NoneStatusId, PartialStatusId),
+        };
+
+        var view = new StatusResolver().ResolveZone(facts, Now);
+
+        view.SourceStatusId.ShouldBe(NoneStatusId);
+        view.ObservedAt.ShouldBe(Now.AddMinutes(-10));
+        view.ObservationCount.ShouldBe(2);
+    }
+
+    [Fact]
+    public void Zone_with_overwhelming_majority_of_water_is_positive()
+    {
+        var facts = new[]
+        {
+            ZoneFact(40, StatusTone.Positive, OkStatusId, PartialStatusId),
+            ZoneFact(30, StatusTone.Positive, OkStatusId, PartialStatusId),
+            ZoneFact(20, StatusTone.Negative, NoneStatusId, PartialStatusId),
+            ZoneFact(15, StatusTone.Positive, OkStatusId, PartialStatusId),
+            ZoneFact(5, StatusTone.Positive, OkStatusId, PartialStatusId),
+        };
+
+        var view = new StatusResolver().ResolveZone(facts, Now);
+
+        view.SourceStatusId.ShouldBe(OkStatusId);
+        view.ObservationCount.ShouldBe(5);
+    }
+
+    [Fact]
+    public void Zone_with_mixed_reports_is_partial_even_if_latest_is_positive()
+    {
+        var facts = new[]
+        {
+            ZoneFact(30, StatusTone.Negative, NoneStatusId, PartialStatusId),
+            ZoneFact(20, StatusTone.Limited, WeakStatusId, PartialStatusId),
+            ZoneFact(5, StatusTone.Positive, OkStatusId, PartialStatusId),
+        };
+
+        var view = new StatusResolver().ResolveZone(facts, Now);
+
+        view.SourceStatusId.ShouldBe(PartialStatusId);
+        view.ObservedAt.ShouldBe(Now.AddMinutes(-5));
+    }
+
+    [Fact]
+    public void Zone_with_the_same_limited_status_keeps_it()
+    {
+        var facts = new[]
+        {
+            ZoneFact(30, StatusTone.Limited, WeakStatusId, PartialStatusId),
+            ZoneFact(5, StatusTone.Limited, WeakStatusId, PartialStatusId),
+        };
+
+        new StatusResolver().ResolveZone(facts, Now).SourceStatusId.ShouldBe(WeakStatusId);
+    }
+
+    [Fact]
+    public void Zone_ignores_reports_older_than_window_before_latest()
+    {
+        var facts = new[]
+        {
+            ZoneFact(150, StatusTone.Negative, NoneStatusId, PartialStatusId),
+            ZoneFact(10, StatusTone.Positive, OkStatusId, PartialStatusId),
+        };
+
+        var view = new StatusResolver().ResolveZone(facts, Now);
+
+        view.SourceStatusId.ShouldBe(OkStatusId);
+        view.ObservationCount.ShouldBe(1);
+    }
+
+    [Fact]
+    public void Zone_without_partial_status_falls_back_to_latest_limited_report()
+    {
+        var facts = new[]
+        {
+            ZoneFact(30, StatusTone.Limited, WeakStatusId),
+            ZoneFact(20, StatusTone.Positive, OkStatusId),
+            ZoneFact(5, StatusTone.Negative, NoneStatusId),
+        };
+
+        new StatusResolver().ResolveZone(facts, Now).SourceStatusId.ShouldBe(WeakStatusId);
+    }
+
     private static ObservationFact Fact(
         DateTimeOffset observedAt,
         TimeSpan? sourceTimeout = null,
@@ -401,7 +499,9 @@ public sealed class StatusResolverTests
         DateTimeOffset? expiresAt = null,
         Guid? sourceId = null,
         Guid? sourceStatusId = null,
-        Guid? id = null)
+        Guid? id = null,
+        StatusTone tone = StatusTone.Positive,
+        Guid? partialStatusId = null)
     {
         var timeout = sourceTimeout ?? Timeout;
 
@@ -414,6 +514,8 @@ public sealed class StatusResolverTests
             ReceivedAt: receivedAt ?? observedAt,
             ExpiresAt: expiresAt ?? observedAt + timeout,
             SourceTimeout: timeout,
-            IsRetracted: isRetracted);
+            IsRetracted: isRetracted,
+            Tone: tone,
+            PartialStatusId: partialStatusId);
     }
 }

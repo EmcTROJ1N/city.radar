@@ -14,8 +14,8 @@ namespace Api.IntegrationTests.Identity;
 
 /// <summary>
 /// Dev-seed каталога, источника и фиксации из <c>db/seed_dev.sql</c>:
-/// при старте хоста в окружении <c>Testing</c> есть категория «Вода», источник с двумя
-/// статусами ok/none и одна фиксация с привязкой к источнику; повторный запуск ничего
+/// при старте хоста в окружении <c>Testing</c> есть категория «Вода», два демо-источника
+/// с шестью статусами и промптом своей зоны, геозоны с привязками; повторный запуск ничего
 /// не дублирует. Демо-фиксация и источник, удалённые через интерфейс, не возвращаются:
 /// журнал аудита хранит факт удаления. Сид живёт в composition root — <see cref="DevCatalogSeeder"/>.
 /// </summary>
@@ -25,6 +25,7 @@ public sealed class DevCatalogSeederTests(PostgresFixture fixture)
     private static readonly Guid WaterCategoryId = Guid.Parse("00000000-0000-0000-0000-0000000000c1");
     private static readonly Guid WaterSourceId = Guid.Parse("00000000-0000-0000-0000-0000000000e1");
     private static readonly Guid WaterObjectId = Guid.Parse("00000000-0000-0000-0000-0000000000f1");
+    private static readonly Guid ShakhterskySourceId = Guid.Parse("00000000-0000-0000-0000-0000000000e3");
 
     private readonly SeedQueries _db = new(fixture);
 
@@ -112,8 +113,8 @@ public sealed class DevCatalogSeederTests(PostgresFixture fixture)
             $"select count(*) from object_types where id = '00000000-0000-0000-0000-0000000000b1'",
             ct)).ShouldBe(1L);
         (await _db.CountAsync(
-            "select count(*) from status_definitions where code in ('ok', 'none')",
-            ct)).ShouldBe(2L);
+            "select count(*) from status_definitions where code in ('ok', 'weak', 'dirty', 'partial', 'none', 'outage')",
+            ct)).ShouldBe(6L);
         (await _db.CountAsync(
             $"select count(*) from sources where id = '{WaterSourceId}'",
             ct)).ShouldBe(1L);
@@ -123,7 +124,16 @@ public sealed class DevCatalogSeederTests(PostgresFixture fixture)
         (await _db.CountAsync(
             $"""
              select count(*) from source_statuses
-             where source_id = '{WaterSourceId}' and code in ('ok', 'none')
+             where source_id in ('{WaterSourceId}', '{ShakhterskySourceId}')
+               and code in ('ok', 'weak', 'dirty', 'partial', 'none', 'outage')
+             """,
+            ct)).ShouldBe(12L);
+        (await _db.CountAsync(
+            $"""
+             select count(*) from sources
+             where id in ('{WaterSourceId}', '{ShakhterskySourceId}')
+               and user_prompt like 'Зона источника — %'
+               and user_prompt like '%Не является статусом%'
              """,
             ct)).ShouldBe(2L);
         (await _db.CountAsync(
@@ -133,6 +143,13 @@ public sealed class DevCatalogSeederTests(PostgresFixture fixture)
             $"""
              select count(*) from map_object_sources
              where map_object_id = '{WaterObjectId}' and source_id = '{WaterSourceId}'
+             """,
+            ct)).ShouldBe(1L);
+        (await _db.CountAsync(
+            $"""
+             select count(*) from map_object_sources mos
+             join map_objects o on o.id = mos.map_object_id
+             where mos.source_id = '{ShakhterskySourceId}' and o.coverage_kind = 'polygon'
              """,
             ct)).ShouldBe(1L);
     }

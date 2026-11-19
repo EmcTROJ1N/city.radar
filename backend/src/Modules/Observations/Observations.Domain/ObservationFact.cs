@@ -14,6 +14,11 @@ namespace Observations.Domain;
 /// <param name="ExpiresAt">Момент, после которого наблюдение не учитывается (<c>ObservedAt + timeout</c>).</param>
 /// <param name="SourceTimeout">Таймаут источника на момент создания наблюдения; задаёт границы Fresh/Aging.</param>
 /// <param name="IsRetracted">Наблюдение отозвано модератором и не учитывается.</param>
+/// <param name="Tone">Смысл статуса для сводки по зоне.</param>
+/// <param name="PartialStatusId">
+/// Статус источника для смешанной сводки по зоне — первый «ограниченный» по порядку показа;
+/// <c>null</c>, если у источника такого статуса нет.
+/// </param>
 public sealed record ObservationFact(
     Guid Id,
     Guid SourceId,
@@ -23,4 +28,6 @@ public sealed record ObservationFact(
     DateTimeOffset ReceivedAt,
     DateTimeOffset ExpiresAt,
     TimeSpan SourceTimeout,
-    bool IsRetracted);
+    bool IsRetracted,
+    StatusTone Tone = StatusTone.Positive,
+    Guid? PartialStatusId = null);

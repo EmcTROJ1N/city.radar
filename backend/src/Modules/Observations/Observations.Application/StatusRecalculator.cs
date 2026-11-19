@@ -6,7 +6,8 @@ namespace Observations.Application;
 
 /// <summary>
 /// Оркестрация пересчёта проекции: факты из таблицы <c>observations</c>
-/// → <see cref="StatusResolver"/> с долей Fresh из глобальных настроек → запись строки
+/// → <see cref="StatusResolver"/> (для зоны — сводка, для точки — «последняя побеждает») с долей Fresh
+/// из глобальных настроек → запись строки
 /// <c>current_statuses</c>.
 /// </summary>
 /// <remarks>
@@ -28,7 +29,14 @@ public sealed class StatusRecalculator(
         await writer.WriteAsync(
             mapObjectId,
             now,
-            async token => resolver.Resolve(await repository.GetFactsAsync(mapObjectId, token), now),
+            async token =>
+            {
+                var facts = await repository.GetFactsAsync(mapObjectId, token);
+
+                return await repository.IsZoneAsync(mapObjectId, token)
+                    ? resolver.ResolveZone(facts, now)
+                    : resolver.Resolve(facts, now);
+            },
             ct);
     }
 }
