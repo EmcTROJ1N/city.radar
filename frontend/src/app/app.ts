@@ -3,6 +3,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { SwUpdate } from '@angular/service-worker';
 import { SessionService } from '@entities/user';
+import { ThemeService } from '@shared/config/theme';
 import { ADMIN_PERMISSIONS, CATALOG_PERMISSIONS, P, Permission } from '@shared/lib/permissions';
 import { Icon, IconName } from '@shared/ui/icon';
 import { Toasts } from '@shared/ui/toast';
@@ -33,6 +34,7 @@ const NAV: NavItem[] = [
 })
 export class App {
   protected readonly session = inject(SessionService);
+  protected readonly theme = inject(ThemeService);
   protected readonly nav = computed(() =>
     NAV.filter((n) => n.anyOf.length === 0 || this.session.hasAny(n.anyOf)),
   );

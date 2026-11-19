@@ -1,4 +1,5 @@
-// Оформление сайта задаётся здесь, пользователю переключатели не показываются.
+// Оформление сайта задаётся здесь. Пользователю доступен только переключатель светлой/тёмной темы
+// (shared/config/theme.ts); theme ниже — тема по умолчанию, пока он ничего не выбрал.
 // Значения применяются при старте (см. apply-ui-config.ts); сами цвета и размеры — в shared/styles/_tokens.scss.
 
 export type Theme = 'light' | 'dark' | 'system';
@@ -8,7 +9,7 @@ export type Density = 'comfortable' | 'compact';
 export type Layout = 'side' | 'top';
 
 export interface UiConfig {
-  /** system — следовать настройке устройства. */
+  /** Тема по умолчанию; system — следовать настройке устройства. */
   theme: Theme;
   accent: Accent;
   radius: Radius;

@@ -5,7 +5,7 @@
 
 .topbar {
   grid-column: 1 / -1; display: flex; align-items: center; gap: 12px; padding: 0 var(--gap);
-  background: var(--bar); color: var(--bar-ink);
+  background: var(--bar); color: var(--bar-ink); border-bottom: 1px solid var(--line-soft);
   position: sticky; top: 0; z-index: 20;
   &__tools { margin-left: auto; display: flex; gap: 8px; }
 }
@@ -16,7 +16,7 @@
 
 .topbar .btn { background: transparent; color: var(--bar-ink); border-color: color-mix(in srgb, var(--bar-ink) 30%, transparent);
   &:hover { background: color-mix(in srgb, var(--bar-ink) 12%, transparent); }
-  &--primary { background: var(--bar-ink); color: var(--bar); border-color: var(--bar-ink); &:hover { background: #fff; } } }
+  &--primary { background: var(--brand); color: var(--brand-ink); border-color: var(--brand); &:hover { background: var(--brand-hover); } } }
 .user small { opacity: 0.65; margin-left: 4px; }
 .topbar a.btn { text-decoration: none; }
 

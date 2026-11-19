@@ -11,6 +11,11 @@
 
     <div class="topbar__tools">
       <app-offline-indicator />
+      <button class="btn btn--ghost btn--icon" type="button" (click)="theme.toggle()"
+        [attr.aria-label]="theme.theme() === 'dark' ? 'Светлая тема' : 'Тёмная тема'"
+        [attr.title]="theme.theme() === 'dark' ? 'Светлая тема' : 'Тёмная тема'">
+        <app-icon [name]="theme.theme() === 'dark' ? 'sun' : 'moon'" />
+      </button>
       @if (session.me(); as u) {
         <a class="btn" routerLink="/login"><app-icon name="user" /><span class="hide-sm user">{{ u.displayName }} <small>{{ session.roleLabel() }}</small></span></a>
       } @else {

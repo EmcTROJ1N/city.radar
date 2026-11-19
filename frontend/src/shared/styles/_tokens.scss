@@ -2,8 +2,8 @@
 // Оформление (тема, акцент, скругления, плотность, раскладка) выбирается в shared/config/ui.config.ts
 // и применяется как data-атрибуты на <html>.
 //
-// Образ: диспетчерская водоканала. Вода синяя, «сухо» — ржавое; кнопки и шапка — тёмный петроль,
-// чтобы действия не путались со статусами.
+// Образ: диспетчерская водоканала. Вода синяя, «сухо» — ржавое; кнопки — тёмный петроль,
+// чтобы действия не путались со статусами. Шапка в светлой теме светлая, в тёмной — темнее фона.
 
 :root {
   color-scheme: light;
@@ -23,8 +23,8 @@
   --line-soft: #dae6e3;
 
   // Шапка и акцент действий (петроль)
-  --bar: #0f2a33;
-  --bar-ink: #e6f0f1;
+  --bar: #fbfdfc;
+  --bar-ink: #0f2a33;
   --brand: #0e4a5a;
   --brand-hover: #0a3944;
   --brand-ink: #ffffff;
@@ -98,9 +98,9 @@
 :root[data-theme='light'] { color-scheme: light; }
 
 // ——— Акценты ———
-:root[data-accent='iris'] { --brand: #3f3d9e; --brand-hover: #302f80; --brand-soft: #e0dff5; --bar: #1d1b4d; }
+:root[data-accent='iris'] { --brand: #3f3d9e; --brand-hover: #302f80; --brand-soft: #e0dff5; }
 :root[data-accent='iris'][data-theme='dark'] { --brand: #a9a7f2; --brand-hover: #c2c0f6; --brand-ink: #14123a; --brand-soft: #2a2860; --bar: #0f0e2a; }
-:root[data-accent='amber'] { --brand: #8a4b08; --brand-hover: #6e3b05; --brand-soft: #f6e6cf; --bar: #3a2208; }
+:root[data-accent='amber'] { --brand: #8a4b08; --brand-hover: #6e3b05; --brand-soft: #f6e6cf; }
 :root[data-accent='amber'][data-theme='dark'] { --brand: #f0b35f; --brand-hover: #f5c887; --brand-ink: #2e1a04; --brand-soft: #46300f; --bar: #1c1204; }
 
 // ——— Скругления ———
