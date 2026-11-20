@@ -170,7 +170,7 @@ export class MapLibreAdapter implements MapAdapter {
   private selectedId: string | null = null;
   private colors: Record<Tone, string> = {
     ok: '#1673c2',
-    limited: '#b7791f',
+    limited: '#c2570c',
     none: '#b9421a',
     queue: '#6b4fa3',
     schedule: '#6b4fa3',
